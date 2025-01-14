@@ -56,6 +56,11 @@ const routes = [
     name: "NotFound",
     component: () => import("@/views/NotFound.vue"),
   },
+  {
+    path: "/checkout",
+    name: "Checkout",
+    component: () => import("@/views/Checkout.vue"),
+  },
 ];
 
 const router = createRouter({

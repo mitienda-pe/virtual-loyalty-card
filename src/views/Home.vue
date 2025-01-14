@@ -276,8 +276,8 @@
                                     </p>
                                 </div>
 
-                                <button
-                                    class="mt-10 block w-full rounded-md bg-blue-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+                                <button @click="handleSubscribe"
+                                    class="mt-10 block w-full rounded-md bg-blue-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-blue-500">
                                     Contratar ahora
                                 </button>
                                 <p class="mt-6 text-xs leading-5 text-gray-600">
@@ -354,6 +354,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import logo from '@/assets/logo.svg';
 import demoVideo from '@/assets/4795437-hd_720_1366_25fps.mp4';
 import {
@@ -507,6 +508,18 @@ const faqs = [
         answer: "Ofrecemos soporte técnico por WhatsApp y correo electrónico. Además, proporcionamos materiales de capacitación y asistencia en la configuración inicial de tu programa."
     }
 ];
+
+const router = useRouter();
+
+const handleSubscribe = () => {
+    router.push({
+        path: '/checkout',
+        query: {
+            clients: selectedClients.value,
+            isAnnual: isAnnual.value ? '1' : '0'
+        }
+    });
+};
 
 
 
