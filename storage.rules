@@ -1,10 +1,20 @@
 rules_version = '2';
-
-// Craft rules based on data in your Firestore database
-// allow write: if firestore.get(
-//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
 service firebase.storage {
   match /b/{bucket}/o {
+    // Permitir acceso público a logos y covers
+    match /logos/{fileName} {
+      allow read: if true;
+    }
+    match /covers/{fileName} {
+      allow read: if true;
+    }
+    
+    // Permitir acceso público a receipts (si es necesario)
+    match /receipts/{fileName} {
+      allow read: if true;
+    }
+    
+    // Regla por defecto - denegar todo lo demás
     match /{allPaths=**} {
       allow read, write: if false;
     }

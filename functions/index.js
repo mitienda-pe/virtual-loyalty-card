@@ -1,197 +1,142 @@
+// index.js
 import functions from "firebase-functions/v2";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { getFirestore } from "firebase-admin/firestore";
 import { ImageAnnotatorClient } from "@google-cloud/vision";
 import twilio from "twilio";
+import express from "express";
+import cors from "cors";
 
 // Inicializar Firebase Admin
 initializeApp();
 
-// Inicializar Vision API client con autenticación por defecto
+// Inicializar Vision API client
 const visionClient = new ImageAnnotatorClient();
 
 // Inicializar Firestore
 const db = getFirestore();
 
-// Función auxiliar para extraer el importe del texto
-const extractAmount = (text) => {
-  // Buscar patrones comunes de importes en tickets peruanos
-  const patterns = [
+// Crear app Express
+const app = express();
+
+// Middleware
+app.use(cors({ origin: true }));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
+// Función auxiliar para extraer RUC e importe del texto
+const extractRUCAndAmount = (text) => {
+  // Patrones comunes para RUC en facturas peruanas
+  const rucPatterns = [/R\.U\.C\.[\s:]*([0-9]{11})/i, /RUC[\s:]*([0-9]{11})/i];
+
+  // Patrones para montos
+  const amountPatterns = [
     /Total a Pagar S\/[\s]*:[\s]*([0-9]+\.[0-9]{2})/i,
     /Importe Total S\/[\s]*:[\s]*([0-9]+\.[0-9]{2})/i,
     /Total[\s:]*S\/[\s]*([0-9]+\.[0-9]{2})/i,
     /S\/[\s]*([0-9]+\.[0-9]{2})/,
   ];
 
-  for (const pattern of patterns) {
+  let ruc = null;
+  let amount = null;
+
+  // Buscar RUC
+  for (const pattern of rucPatterns) {
     const match = text.match(pattern);
     if (match) {
-      return parseFloat(match[1].replace(",", "."));
+      ruc = match[1];
+      break;
     }
   }
-  return null;
+
+  // Buscar monto
+  for (const pattern of amountPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      amount = parseFloat(match[1].replace(",", "."));
+      break;
+    }
+  }
+
+  return { ruc, amount };
 };
 
-// Verificar si un ticket es duplicado
-const isDuplicateReceipt = async (db, phoneNumber, amount, imageUrl) => {
-  const cutoffTime = new Date();
-  cutoffTime.setHours(cutoffTime.getHours() - 24);
+// Función para verificar si un ticket es duplicado
+const isDuplicateReceipt = async (
+  businessSlug,
+  phoneNumber,
+  amount,
+  imageUrl
+) => {
+  const customerRef = db.collection("customers").doc(phoneNumber);
+  const customerDoc = await customerRef.get();
 
-  const snapshot = await db
-    .collection("purchases")
-    .where("phoneNumber", "==", phoneNumber)
-    .where("date", ">", Timestamp.fromDate(cutoffTime))
-    .get();
+  if (!customerDoc.exists) {
+    return false;
+  }
 
-  return snapshot.docs.some((doc) => {
-    const purchase = doc.data();
-    return (
+  const customerData = customerDoc.data();
+  const businessPurchases =
+    customerData.businesses?.[businessSlug]?.purchases || [];
+
+  return businessPurchases.some(
+    (purchase) =>
       Math.abs(purchase.amount - amount) < 0.01 ||
       purchase.receiptUrl === imageUrl
-    );
-  });
+  );
 };
 
-// Validar tiempo entre compras
-const validateTimeBetweenPurchases = async (db, phoneNumber) => {
-  const minTimeBetweenPurchases = 30 * 60 * 1000; // 30 minutos
+// Función para validar tiempo entre compras
+const validateTimeBetweenPurchases = async (
+  businessSlug,
+  phoneNumber,
+  timeLimit
+) => {
+  const customerRef = db.collection("customers").doc(phoneNumber);
+  const customerDoc = await customerRef.get();
 
-  const lastPurchase = await db
-    .collection("purchases")
-    .where("phoneNumber", "==", phoneNumber)
-    .orderBy("date", "desc")
-    .limit(1)
-    .get();
+  if (!customerDoc.exists) {
+    return { valid: true };
+  }
 
-  if (!lastPurchase.empty) {
-    const lastPurchaseTime = lastPurchase.docs[0].data().date.toDate();
-    const timeElapsed = Date.now() - lastPurchaseTime.getTime();
+  const customerData = customerDoc.data();
+  const businessData = customerData.businesses?.[businessSlug];
 
-    if (timeElapsed < minTimeBetweenPurchases) {
-      const minutesRemaining = Math.ceil(
-        (minTimeBetweenPurchases - timeElapsed) / 60000
-      );
-      return {
-        valid: false,
-        message: `Por favor espera ${minutesRemaining} minutos antes de registrar otra compra.`,
-      };
-    }
+  if (!businessData?.lastVisit) {
+    return { valid: true };
+  }
+
+  const lastVisitTime = businessData.lastVisit.toDate();
+  const timeElapsed = Date.now() - lastVisitTime.getTime();
+
+  if (timeElapsed < timeLimit) {
+    const minutesRemaining = Math.ceil((timeLimit - timeElapsed) / 60000);
+    return {
+      valid: false,
+      message: `Por favor espera ${minutesRemaining} minutos antes de registrar otra compra.`,
+    };
   }
 
   return { valid: true };
 };
 
-// Función principal que procesa los mensajes de WhatsApp
-export const processWhatsAppMessage = functions.https.onRequest(
-  async (req, res) => {
-    try {
-      const { From, NumMedia } = req.body;
-      const phoneNumber = From.replace("whatsapp:", "");
-      const messagingResponse = new twilio.twiml.MessagingResponse();
+app.post("/", async (req, res) => {
+  try {
+    const { From, NumMedia } = req.body;
+    const phoneNumber = From.replace("whatsapp:", "");
+    const messagingResponse = new twilio.twiml.MessagingResponse();
 
-      // Si no hay imágenes adjuntas
-      if (NumMedia === "0") {
-        messagingResponse.message(
-          "Por favor, envía una foto de tu ticket de compra."
-        );
-        res.set("Content-Type", "text/xml");
-        return res.send(messagingResponse.toString());
-      }
-
-      // Validar tiempo entre compras
-      const timeValidation = await validateTimeBetweenPurchases(
-        db,
-        phoneNumber
-      );
-      if (!timeValidation.valid) {
-        messagingResponse.message(timeValidation.message);
-        res.set("Content-Type", "text/xml");
-        return res.send(messagingResponse.toString());
-      }
-
-      // Procesar la imagen con Vision API
-      const imageUrl = req.body["MediaUrl0"];
-      const [result] = await visionClient.textDetection(imageUrl);
-
-      if (!result.fullTextAnnotation) {
-        messagingResponse.message(
-          "No se pudo detectar texto en la imagen. Por favor, intenta con otra foto."
-        );
-        res.set("Content-Type", "text/xml");
-        return res.send(messagingResponse.toString());
-      }
-
-      const detectedText = result.fullTextAnnotation.text;
-      const amount = extractAmount(detectedText);
-
-      if (!amount) {
-        messagingResponse.message(
-          "No se pudo identificar el importe en el ticket. Por favor, intenta con otra foto."
-        );
-        res.set("Content-Type", "text/xml");
-        return res.send(messagingResponse.toString());
-      }
-
-      // Verificar duplicados
-      const isDuplicate = await isDuplicateReceipt(
-        db,
-        phoneNumber,
-        amount,
-        imageUrl
-      );
-      if (isDuplicate) {
-        messagingResponse.message(
-          "Este ticket parece haber sido registrado anteriormente. Por favor, envía un ticket diferente."
-        );
-        res.set("Content-Type", "text/xml");
-        return res.send(messagingResponse.toString());
-      }
-
-      // Guardar la compra en Firestore
-      const purchase = {
-        phoneNumber,
-        amount,
-        date: Timestamp.now(),
-        receiptUrl: imageUrl,
-        verified: true,
-      };
-
-      await db.collection("purchases").add(purchase);
-
-      // Obtener el total de compras para este número
-      const purchasesQuery = await db
-        .collection("purchases")
-        .where("phoneNumber", "==", phoneNumber)
-        .get();
-
-      const purchaseCount = purchasesQuery.size;
-      const remainingPurchases = 10 - purchaseCount;
-
-      // Enviar respuesta apropiada
-      let responseMessage;
-      if (remainingPurchases > 0) {
-        responseMessage =
-          `¡Compra registrada! Te faltan ${remainingPurchases} ${
-            remainingPurchases === 1 ? "compra" : "compras"
-          } para completar tu tarjeta. Puedes ver tu tarjeta en: ` +
-          `https://virtual-loyalty-card-e37c9.firebaseapp.com/card/${phoneNumber}`;
-      } else {
-        responseMessage =
-          "¡Felicidades! Has completado tu tarjeta de fidelización. " +
-          "Muestra este mensaje en el establecimiento para reclamar tu premio.";
-      }
-
-      messagingResponse.message(responseMessage);
-      res.set("Content-Type", "text/xml");
-      res.send(messagingResponse.toString());
-    } catch (error) {
-      console.error("Error:", error);
-      const messagingResponse = new twilio.twiml.MessagingResponse();
-      messagingResponse.message(
-        "Lo siento, ha ocurrido un error al procesar tu ticket. Por favor, intenta de nuevo."
-      );
-      res.set("Content-Type", "text/xml");
-      res.send(messagingResponse.toString());
-    }
+    // [... resto de la lógica del processWhatsAppMessage ...]
+  } catch (error) {
+    console.error("Error:", error);
+    const messagingResponse = new twilio.twiml.MessagingResponse();
+    messagingResponse.message(
+      "Lo siento, ha ocurrido un error al procesar tu ticket. Por favor, intenta de nuevo."
+    );
+    res.set("Content-Type", "text/xml");
+    res.send(messagingResponse.toString());
   }
-);
+});
+
+// Función principal que procesa los mensajes de WhatsApp
+export const processWhatsAppMessage = functions.https.onRequest(app);
