@@ -2,6 +2,11 @@
   "functions": [
     {
       "source": "functions",
+      "emulators": {
+        "functions": {
+          "port": 5001
+        }
+      },
       "codebase": "default",
       "ignore": [
         "node_modules",

@@ -1,28 +1,22 @@
-// index.js
-import functions from "firebase-functions/v2";
-import { initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+// functions/index.js
+import { onRequest } from "firebase-functions/v2/https";
 import { ImageAnnotatorClient } from "@google-cloud/vision";
 import twilio from "twilio";
 import express from "express";
 import cors from "cors";
-
-// Inicializar Firebase Admin
-initializeApp();
+import { app as firebaseApp, db } from "./src/config.js";
+import { createPref } from "./src/mercadopago.js";
 
 // Inicializar Vision API client
 const visionClient = new ImageAnnotatorClient();
 
-// Inicializar Firestore
-const db = getFirestore();
+// Crear app Express para WhatsApp
+const expressApp = express();
 
-// Crear app Express
-const app = express();
-
-// Middleware
-app.use(cors({ origin: true }));
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// Middleware para WhatsApp
+expressApp.use(cors({ origin: true }));
+expressApp.use(express.urlencoded({ extended: true }));
+expressApp.use(express.json());
 
 // Función auxiliar para extraer RUC e importe del texto
 const extractRUCAndAmount = (text) => {
@@ -120,13 +114,21 @@ const validateTimeBetweenPurchases = async (
   return { valid: true };
 };
 
-app.post("/", async (req, res) => {
+// Manejar mensajes de WhatsApp
+expressApp.post("/", async (req, res) => {
   try {
     const { From, NumMedia } = req.body;
     const phoneNumber = From.replace("whatsapp:", "");
     const messagingResponse = new twilio.twiml.MessagingResponse();
 
     // [... resto de la lógica del processWhatsAppMessage ...]
+
+    // Por ahora, solo enviar una respuesta simple
+    messagingResponse.message(
+      "Recibimos tu mensaje. Estamos procesando tu ticket."
+    );
+    res.set("Content-Type", "text/xml");
+    res.send(messagingResponse.toString());
   } catch (error) {
     console.error("Error:", error);
     const messagingResponse = new twilio.twiml.MessagingResponse();
@@ -138,5 +140,5 @@ app.post("/", async (req, res) => {
   }
 });
 
-// Función principal que procesa los mensajes de WhatsApp
-export const processWhatsAppMessage = functions.https.onRequest(app);
+export const createPreference = createPref;
+export const processWhatsAppMessage = onRequest(expressApp);

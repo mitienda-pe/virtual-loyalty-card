@@ -173,7 +173,8 @@
                         </div>
 
                         <!-- MercadoPago Button Container -->
-                        <div id="mp-container" class="w-full"></div>
+                        <div id="mp-container"
+                            class="w-full min-h-[50px] border border-dashed border-gray-300 p-4 rounded-lg"></div>
 
                         <div v-if="error" class="text-sm text-red-600 mt-2">
                             {{ error }}
@@ -193,17 +194,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed, watch, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { Check } from 'lucide-vue-next';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/firebase';
 
 const router = useRouter();
+const route = useRoute();
 const error = ref('');
 const currentStep = ref(0);
-const mercadoPago = ref(null);
 
 const steps = [
     { id: 'company', name: 'Empresa' },
@@ -219,8 +220,18 @@ const form = ref({
     email: '',
     password: '',
     confirmPassword: '',
-    planClients: 1000,  // Número de clientes del plan
+    planClients: parseInt(route.query.clients || '1000'),
+    isAnnual: route.query.isAnnual === '1'
 });
+
+// Watch para cambios en el paso actual
+watch(currentStep, async (newStep) => {
+    console.log('📱 Cambio de paso:', newStep);
+    if (newStep === 2) {
+        console.log('🎯 Iniciando MercadoPago en paso 2');
+        await initMercadoPago();
+    }
+}, { immediate: false });
 
 // Computed properties para el resumen de pago
 const basePrice = computed(() => Math.ceil(form.value.planClients / 500) * 30 * 12);
@@ -258,59 +269,72 @@ const validateAdminData = () => {
     currentStep.value++;
 };
 
-import { loadMercadoPagoScript, createPreference, initMercadoPagoButton } from '@/services/mercadopago';
+import { loadMercadoPagoScript } from '@/services/mercadopago';
 
-// Integración con MercadoPago
+// En Checkout.vue
 const initMercadoPago = async () => {
     try {
         error.value = '';
+        console.log('🚀 Iniciando proceso de MercadoPago...');
 
-        // 1. Cargar el SDK de MercadoPago primero
-        await loadMercadoPagoScript();
+        // 1. Cargar el SDK
+        const MercadoPago = await loadMercadoPagoScript();
+        console.log('✅ SDK cargado correctamente');
 
-        // 2. Crear usuario y datos en Firebase
-        await registerUser();
-
-        // 3. Crear preferencia de pago
+        // 2. Preparar datos
         const orderData = {
-            planClients: form.value.planClients,
-            total: total.value,
-            businessName: form.value.businessName,
-            ruc: form.value.ruc,
-            address: form.value.address,
-            isAnnual: form.value.isAnnual
+            planClients: parseInt(form.value.planClients),
+            total: Number(total.value),
+            businessName: form.value.businessName.trim(),
+            ruc: form.value.ruc.trim()
         };
 
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/create-preference`, {
+        console.log('📦 Enviando datos:', orderData);
+
+        // 3. Crear preferencia
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/createPreference`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(orderData)
         });
 
+        const responseText = await response.text();
+        console.log('📬 Respuesta del servidor:', responseText);
+
         if (!response.ok) {
-            throw new Error('Error al crear la preferencia de pago');
+            throw new Error(`Error del servidor: ${responseText}`);
         }
 
-        const { id: preferenceId } = await response.json();
+        const data = JSON.parse(responseText);
+        console.log('✅ Preferencia creada:', data);
 
-        // 4. Renderizar botón de pago
-        const mp = new window.MercadoPago(import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY);
+        // 4. Inicializar Checkout
+        console.log('🔧 Iniciando Checkout con Public Key:', import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY);
+        const mp = new MercadoPago(import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY, {
+            locale: 'es-PE'
+        });
 
-        mp.checkout({
+        const checkout = mp.checkout({
             preference: {
-                id: preferenceId
+                id: data.id
             },
             render: {
                 container: '#mp-container',
-                label: 'Pagar ahora',
+                label: 'Pagar',
+                type: 'wallet'
+            },
+            theme: {
+                elementsColor: '#1D4ED8'
             }
         });
 
+        console.log('✅ Checkout inicializado:', checkout);
+
     } catch (error) {
-        console.error('Error en initMercadoPago:', error);
-        error.value = error.message || 'Error al inicializar el pago';
+        console.error('❌ Error completo:', error);
+        error.value = error.message;
     }
 };
 
