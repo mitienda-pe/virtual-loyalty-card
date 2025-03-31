@@ -356,7 +356,7 @@
 import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import logo from '@/assets/logo.svg';
-import demoVideo from '@/assets/4795437-hd_720_1366_25fps.mp4';
+import demoVideo from 'https://storage.googleapis.com/virtual-loyalty-card-e37c9.firebasestorage.app/videos/4795437-hd_720_1366_25fps.mp4';
 import {
     ArrowRight,
     Store,
