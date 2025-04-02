@@ -1,22 +1,22 @@
 {
-  "functions": [
-    {
-      "source": "functions",
-      "emulators": {
-        "functions": {
-          "port": 5001
-        }
-      },
-      "codebase": "default",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ]
+  "functions": {
+    "source": "functions",
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "*.local"
+    ]
+  },
+  "emulators": {
+    "functions": {
+      "port": 5001
+    },
+    "hosting": {
+      "port": 5000
     }
-  ],
+  },
   "hosting": {
     "public": "dist",
     "ignore": [
