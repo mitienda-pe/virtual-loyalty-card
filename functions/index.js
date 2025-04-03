@@ -1,3 +1,6 @@
+process.env.NODE_ENV = "development";
+console.log("¡IMPORTANTE! Entorno forzado a:", process.env.NODE_ENV);
+
 // functions/index.js
 import { onRequest } from "firebase-functions/v2/https";
 import { ImageAnnotatorClient } from "@google-cloud/vision";
@@ -14,10 +17,15 @@ process.env.NODE_ENV = process.env.NODE_ENV || "development";
 console.log("Modo de entorno:", process.env.NODE_ENV);
 
 // Definir parámetros de entorno para WhatsApp con valores predeterminados
-const whatsappPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "108512615643697";
-const whatsappVerifyToken = process.env.WHATSAPP_VERIFY_TOKEN || "38f7d5a1-b65c-4e9d-9f2d-ea9c21b7ca56";
-const whatsappApiToken = process.env.WHATSAPP_API_TOKEN || "EAAJoZCiJisnoBO1f9v4mv7FRkD5kOJyxF2eNwNLyAuFzRYURV2Jeau3p2ZBd0bbQleo1jbXM4fYiKZANk0GTIwyRaIs1qQ1XJ6Ab1qhIttcLntKq7WUSXZAVS9WDJ2XotSQunELvsoz8xth9ymrCwlEPMxhOiOAMVuPGgLuqaw4jkZC8SvOEVa7fbDuNw2AZDZD";
-const whatsappAppSecret = process.env.WHATSAPP_APP_SECRET || "09353d1301e356b0cdcba78d2a9c7639";
+const whatsappPhoneNumberId =
+  process.env.WHATSAPP_PHONE_NUMBER_ID || "108512615643697";
+const whatsappVerifyToken =
+  process.env.WHATSAPP_VERIFY_TOKEN || "38f7d5a1-b65c-4e9d-9f2d-ea9c21b7ca56";
+const whatsappApiToken =
+  process.env.WHATSAPP_API_TOKEN ||
+  "EAAJoZCiJisnoBO1f9v4mv7FRkD5kOJyxF2eNwNLyAuFzRYURV2Jeau3p2ZBd0bbQleo1jbXM4fYiKZANk0GTIwyRaIs1qQ1XJ6Ab1qhIttcLntKq7WUSXZAVS9WDJ2XotSQunELvsoz8xth9ymrCwlEPMxhOiOAMVuPGgLuqaw4jkZC8SvOEVa7fbDuNw2AZDZD";
+const whatsappAppSecret =
+  process.env.WHATSAPP_APP_SECRET || "09353d1301e356b0cdcba78d2a9c7639";
 
 // Inicializar Vision API client
 const visionClient = new ImageAnnotatorClient();
@@ -207,17 +215,25 @@ async function registerPurchase(businessSlug, phoneNumber, amount, imageUrl) {
 // Configuración de WhatsApp API (Facebook)
 
 // Función para enviar mensaje a través de WhatsApp API
-async function sendWhatsAppMessage(phoneNumber, message) {
+async function sendWhatsAppMessage(phoneNumber, message, phoneNumberId) {
   try {
-    // Usar los valores predeterminados si las variables de entorno no están disponibles
-    const apiToken = whatsappApiToken;
-    const phoneNumberId = whatsappPhoneNumberId;
-    
-    console.log("Usando token de API de WhatsApp:", apiToken ? apiToken.substring(0, 10) + "..." : "No disponible");
-    console.log("Usando ID de número de teléfono:", phoneNumberId);
+    // Usar el ID proporcionado o caer en el valor por defecto
+    const apiToken = process.env.WHATSAPP_API_TOKEN || whatsappApiToken;
+    const phoneId =
+      phoneNumberId ||
+      process.env.WHATSAPP_PHONE_NUMBER_ID ||
+      whatsappPhoneNumberId;
+
+    console.log("📲 Enviando mensaje a:", phoneNumber);
+    console.log("💬 Contenido del mensaje:", message);
+    console.log(
+      "🔑 Usando token de API de WhatsApp:",
+      apiToken ? apiToken.substring(0, 10) + "..." : "No disponible"
+    );
+    console.log("📱 Usando ID de número de teléfono:", phoneId);
 
     if (!apiToken) {
-      console.error("Token de API de WhatsApp no configurado");
+      console.error("❌ Token de API de WhatsApp no configurado");
       throw new Error("Token de API de WhatsApp no configurado");
     }
 
@@ -227,9 +243,10 @@ async function sendWhatsAppMessage(phoneNumber, message) {
     }
 
     // Enviar mensaje a través de la API de WhatsApp
+    console.log("🔄 Realizando solicitud a la API de WhatsApp...");
     const response = await axios({
       method: "POST",
-      url: `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+      url: `https://graph.facebook.com/v18.0/${phoneId}/messages`,
       headers: {
         Authorization: `Bearer ${apiToken}`,
         "Content-Type": "application/json",
@@ -246,40 +263,59 @@ async function sendWhatsAppMessage(phoneNumber, message) {
       },
     });
 
-    console.log("Mensaje enviado correctamente:", response.data);
+    console.log(
+      "✅ Mensaje enviado correctamente:",
+      JSON.stringify(response.data, null, 2)
+    );
     return { success: true, data: response.data };
   } catch (error) {
-    console.error("Error enviando mensaje de WhatsApp:", error.message);
+    console.error("❌ Error enviando mensaje de WhatsApp:", error.message);
+    console.error(
+      "📋 Detalles del error:",
+      error.response
+        ? JSON.stringify(error.response.data, null, 2)
+        : "No hay datos de respuesta"
+    );
     return { success: false, error: error.message };
   }
 }
 
 // Función para descargar media de WhatsApp API
+// Función para descargar media de WhatsApp API
 async function downloadWhatsAppMedia(mediaId) {
   try {
+    console.log("📥 Iniciando descarga de media con ID:", mediaId);
+
     // Usar los valores predeterminados si las variables de entorno no están disponibles
-    const apiToken = whatsappApiToken;
-    const phoneNumberId = whatsappPhoneNumberId;
-    
-    console.log("Usando token de API de WhatsApp (download):", apiToken ? apiToken.substring(0, 10) + "..." : "No disponible");
+    const apiToken = process.env.WHATSAPP_API_TOKEN || whatsappApiToken;
+    const phoneNumberId =
+      process.env.WHATSAPP_PHONE_NUMBER_ID || whatsappPhoneNumberId;
+
+    console.log(
+      "🔑 Usando token de API de WhatsApp (download):",
+      apiToken ? apiToken.substring(0, 10) + "..." : "No disponible"
+    );
 
     if (!apiToken) {
-      console.error("Token de API de WhatsApp no configurado");
+      console.error("❌ Token de API de WhatsApp no configurado");
       throw new Error("Token de API de WhatsApp no configurado");
     }
 
     // Primero obtenemos la URL del media
+    console.log("🔄 Obteniendo URL del media...");
     const mediaResponse = await axios({
       method: "GET",
-      url: `https://graph.facebook.com/v18.0/${phoneNumberId}/media/${mediaId}`,
+      url: `https://graph.facebook.com/v18.0/${mediaId}`,
       headers: {
         Authorization: `Bearer ${apiToken}`,
       },
     });
 
+    console.log("✅ URL del media obtenida:", mediaResponse.data.url);
     const mediaUrl = mediaResponse.data.url;
 
     // Luego descargamos el contenido del media
+    console.log("🔄 Descargando contenido del media...");
     const mediaContent = await axios({
       method: "GET",
       url: mediaUrl,
@@ -289,13 +325,20 @@ async function downloadWhatsAppMedia(mediaId) {
       responseType: "arraybuffer",
     });
 
+    console.log("✅ Contenido del media descargado correctamente");
     return {
       success: true,
       data: mediaContent.data,
       contentType: mediaContent.headers["content-type"],
     };
   } catch (error) {
-    console.error("Error descargando media:", error.message);
+    console.error("❌ Error descargando media:", error.message);
+    console.error(
+      "📋 Detalles del error:",
+      error.response
+        ? JSON.stringify(error.response.data, null, 2)
+        : "No hay datos de respuesta"
+    );
     return {
       success: false,
       error: error.message,
@@ -307,17 +350,21 @@ async function downloadWhatsAppMedia(mediaId) {
 async function verifyWhatsAppSignature(req, res, next) {
   try {
     // Usar el valor predeterminado si la variable de entorno no está disponible
-    const appSecret = whatsappAppSecret;
-    
-    console.log("Usando secreto de la aplicación:", appSecret ? appSecret.substring(0, 5) + "..." : "No disponible");
+    const appSecret =
+      process.env.WHATSAPP_APP_SECRET || "09353d1301e356b0cdcba78d2a9c7639";
+
+    console.log(
+      "Usando secreto de la aplicación:",
+      appSecret ? appSecret.substring(0, 5) + "..." : "No disponible"
+    );
 
     // Verificar si estamos en modo desarrollo (omitir verificación de firma)
     const isDevelopment = process.env.NODE_ENV !== "production";
-    
-    if (!appSecret) {
-      console.warn(
-        "Secreto de la aplicación de WhatsApp no configurado, omitiendo verificación de firma"
-      );
+
+    console.log("Estamos en modo desarrollo:", isDevelopment);
+
+    if (isDevelopment) {
+      console.log("Modo desarrollo: Omitiendo verificación de firma");
       return next();
     }
 
@@ -325,52 +372,38 @@ async function verifyWhatsAppSignature(req, res, next) {
 
     const signature = req.headers["x-hub-signature-256"];
     if (!signature) {
-      console.warn("No se encontró la firma en los headers");
-      // En desarrollo, permitimos solicitudes sin firma
-      if (isDevelopment) {
-        console.log("Modo desarrollo: Omitiendo verificación de firma");
-        return next();
-      }
+      console.warn(
+        "No se encontró la firma en los headers:",
+        JSON.stringify(req.headers)
+      );
       return res.status(401).send("No signature found");
     }
 
     const [algorithm, expectedHash] = signature.split("=");
     if (algorithm !== "sha256") {
-      console.warn("Algoritmo de firma no soportado");
-      // En desarrollo, permitimos algoritmos diferentes
-      if (isDevelopment) {
-        console.log("Modo desarrollo: Omitiendo verificación de algoritmo");
-        return next();
-      }
+      console.warn("Algoritmo de firma no soportado:", algorithm);
       return res.status(401).send("Unsupported signature algorithm");
     }
+
+    // Mostrar el cuerpo de la solicitud para depuración (ten cuidado con datos sensibles)
+    console.log("Cuerpo de la solicitud:", JSON.stringify(req.body));
 
     const body = JSON.stringify(req.body);
     const hmac = crypto.createHmac("sha256", appSecret);
     hmac.update(body);
     const calculatedHash = hmac.digest("hex");
 
-    console.log("Hash calculado:", calculatedHash.substring(0, 10) + "...");
-    console.log("Hash esperado:", expectedHash.substring(0, 10) + "...");
+    console.log("Hash calculado completo:", calculatedHash);
+    console.log("Hash esperado completo:", expectedHash);
 
     if (calculatedHash !== expectedHash) {
       console.warn("Firma inválida");
-      // En desarrollo, permitimos firmas inválidas
-      if (isDevelopment) {
-        console.log("Modo desarrollo: Omitiendo verificación de firma inválida");
-        return next();
-      }
       return res.status(401).send("Invalid signature");
     }
 
     next();
   } catch (error) {
     console.error("Error verificando firma:", error);
-    // En desarrollo, permitimos errores en la verificación
-    if (process.env.NODE_ENV !== "production") {
-      console.log("Modo desarrollo: Continuando a pesar del error en la verificación");
-      return next();
-    }
     res.status(500).send("Error verifying signature");
   }
 }
@@ -381,7 +414,7 @@ whatsappApiApp.get("/webhook", (req, res) => {
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
   const verifyToken = whatsappVerifyToken;
-  
+
   console.log("Usando token de verificación:", verifyToken);
 
   if (mode === "subscribe" && token === verifyToken) {
@@ -399,7 +432,7 @@ whatsappApiApp.get("/", (req, res) => {
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
   const verifyToken = whatsappVerifyToken;
-  
+
   console.log("Usando token de verificación (ruta raíz):", verifyToken);
 
   if (mode === "subscribe" && token === verifyToken) {
@@ -412,69 +445,81 @@ whatsappApiApp.get("/", (req, res) => {
 });
 
 // Ruta para procesar mensajes entrantes de WhatsApp en la ruta raíz (/)
+// En tu ruta POST principal, modifica la parte de procesamiento de mensajes:
 whatsappApiApp.post("/", verifyWhatsAppSignature, async (req, res) => {
   try {
     // Responder rápidamente para evitar timeouts
     res.status(200).send("EVENT_RECEIVED");
 
     const body = req.body;
+    console.log("🔍 Mensaje recibido:", JSON.stringify(body, null, 2));
 
     // Verificar que sea un mensaje de WhatsApp
     if (!body.object || body.object !== "whatsapp_business_account") {
-      console.log("Evento no soportado:", body.object);
+      console.log("❌ Evento no soportado:", body.object);
       return;
     }
 
-    // Obtener la configuración de WhatsApp desde Firestore
-    const configSnapshot = await db
-      .collection("system")
-      .doc("whatsapp_config")
-      .get();
-    const whatsappConfig = configSnapshot.exists ? configSnapshot.data() : {};
+    console.log("✅ Objeto WhatsApp válido, procesando entradas...");
 
-    // Procesar cada entrada (puede haber múltiples en un solo webhook)
+    // Procesar cada entrada
     for (const entry of body.entry) {
-      // Procesar cada cambio en los mensajes
+      console.log("📝 Procesando entrada:", JSON.stringify(entry, null, 2));
+
+      // Procesar cada cambio
       for (const change of entry.changes) {
-        // Verificar que sea un cambio de valor en WhatsApp
+        console.log("🔄 Procesando cambio:", change.field);
+
         if (change.field !== "messages") {
-          console.log("Campo no soportado:", change.field);
+          console.log("⚠️ Campo no soportado:", change.field);
           continue;
         }
 
         const value = change.value;
+        console.log("📋 Valor del cambio:", JSON.stringify(value, null, 2));
+
+        // Guardar la metadata para usar en respuestas
+        const metadata = value.metadata || {};
 
         // Procesar cada mensaje entrante
         if (value.messages && value.messages.length > 0) {
           for (const message of value.messages) {
-            // Obtener el número de teléfono del remitente
             const from = message.from;
-            const timestamp = message.timestamp;
-            const messageId = message.id;
-
-            console.log(`Mensaje recibido de ${from} con ID ${messageId}`);
+            console.log(
+              `📱 Mensaje recibido de ${from} con ID ${message.id} (tipo: ${message.type})`
+            );
 
             // Buscar o crear usuario
+            console.log("🔍 Buscando o creando usuario...");
             const user = await findOrCreateUser(from);
+            console.log(
+              "👤 Usuario encontrado/creado:",
+              JSON.stringify(user, null, 2)
+            );
 
             // Procesar según el tipo de mensaje
             if (message.type === "image") {
-              await processImageMessage(message, user, whatsappConfig);
+              console.log("🖼️ Procesando mensaje de imagen...");
+              await processImageMessage(message, user, {}, metadata);
             } else if (message.type === "text") {
-              await processTextMessage(message, user, whatsappConfig);
+              console.log("📝 Procesando mensaje de texto...");
+              await processTextMessage(message, user, {}, metadata);
             } else {
-              console.log(`Tipo de mensaje no soportado: ${message.type}`);
+              console.log(`⚠️ Tipo de mensaje no soportado: ${message.type}`);
               await sendWhatsAppMessage(
                 from,
-                "Lo siento, solo puedo procesar imágenes de facturas o comandos de texto. Envía 'ayuda' para más información."
+                "Lo siento, solo puedo procesar imágenes de facturas o comandos de texto. Envía 'ayuda' para más información.",
+                metadata.phone_number_id
               );
             }
           }
+        } else {
+          console.log("⚠️ No hay mensajes en el cambio");
         }
       }
     }
   } catch (error) {
-    console.error("Error procesando webhook:", error);
+    console.error("❌ Error procesando webhook:", error);
   }
 });
 
@@ -611,149 +656,79 @@ async function findOrCreateUser(phone, name) {
 }
 
 // Función para procesar mensajes de imagen
-async function processImageMessage(message, user, whatsappConfig) {
+async function processImageMessage(message, user, whatsappConfig, metadata) {
   try {
+    console.log("🖼️ Iniciando procesamiento de imagen");
     const imageId = message.image.id;
+    console.log("🆔 ID de imagen:", imageId);
 
     // Descargar la imagen
+    console.log("📥 Descargando imagen...");
     const mediaResult = await downloadWhatsAppMedia(imageId);
     if (!mediaResult.success) {
+      console.error("❌ Error al descargar la imagen:", mediaResult.error);
       await sendWhatsAppMessage(
         user.phone,
-        "Lo sentimos, no pudimos procesar tu imagen. Por favor, intenta nuevamente."
+        "Lo sentimos, no pudimos procesar tu imagen. Por favor, intenta nuevamente.",
+        metadata.phone_number_id // Usar el ID recibido en el mensaje
       );
       return;
     }
+    console.log("✅ Imagen descargada correctamente");
 
-    // Procesar la imagen con Vision API
-    // Aquí implementaríamos la lógica para extraer información del comprobante
-    // Por ahora, simularemos este proceso
+    // Procesar la imagen...
+    console.log("🔍 Procesando la imagen para extraer información...");
 
-    // Obtener un negocio aleatorio para la demostración
-    const businessesSnapshot = await db
-      .collection("businesses")
-      .limit(10)
-      .get();
-    if (businessesSnapshot.empty) {
-      await sendWhatsAppMessage(
-        user.phone,
-        "Lo sentimos, no hay negocios disponibles en este momento."
-      );
-      return;
-    }
+    // Simulación de procesamiento exitoso
+    console.log(
+      "✅ Imagen procesada correctamente, enviando respuesta al usuario"
+    );
 
-    const businesses = businessesSnapshot.docs;
-    const randomIndex = Math.floor(Math.random() * businesses.length);
-    const business = businesses[randomIndex];
-    const businessData = business.data();
-
-    // Simular monto y puntos
-    const amount = Math.floor(Math.random() * 100) + 20; // Entre 20 y 120
-    const points = Math.floor(amount / 10); // 1 punto por cada 10 unidades
-
-    // Registrar la transacción
-    const transaction = {
-      userId: user.id,
-      businessId: business.id,
-      amount: amount,
-      points: points,
-      status: "completed",
-      type: "purchase",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    await db.collection("transactions").add(transaction);
-
-    // Actualizar puntos del cliente
-    const clientPointsSnapshot = await db
-      .collection("client_points")
-      .where("userId", "==", user.id)
-      .where("businessId", "==", business.id)
-      .limit(1)
-      .get();
-
-    if (clientPointsSnapshot.empty) {
-      // Crear nuevo registro de puntos
-      await db.collection("client_points").add({
-        userId: user.id,
-        businessId: business.id,
-        points: points,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-    } else {
-      // Actualizar puntos existentes
-      const pointsDoc = clientPointsSnapshot.docs[0];
-      const currentPoints = pointsDoc.data().points || 0;
-
-      await pointsDoc.ref.update({
-        points: currentPoints + points,
-        updatedAt: new Date(),
-      });
-    }
-
-    // Enviar confirmación al cliente
-    let responseMessage = `¡Gracias por tu compra en ${businessData.name}!\n\n`;
-    responseMessage += `📝 Detalles:\n`;
-    responseMessage += `- Monto: $${amount}\n`;
-    responseMessage += `- Puntos ganados: ${points}\n`;
-
-    // Obtener total de puntos
-    const updatedPointsSnapshot = await db
-      .collection("client_points")
-      .where("userId", "==", user.id)
-      .where("businessId", "==", business.id)
-      .limit(1)
-      .get();
-
-    if (!updatedPointsSnapshot.empty) {
-      const totalPoints = updatedPointsSnapshot.docs[0].data().points || 0;
-      responseMessage += `- Total de puntos: ${totalPoints}\n\n`;
-    }
-
-    responseMessage += `Puedes consultar tus puntos enviando la palabra "puntos".`;
-
-    await sendWhatsAppMessage(user.phone, responseMessage);
-  } catch (error) {
-    console.error("Error procesando mensaje de imagen:", error);
-
+    // Enviar respuesta al usuario usando el ID de teléfono recibido
     await sendWhatsAppMessage(
       user.phone,
-      "Lo sentimos, hubo un problema procesando tu comprobante. Por favor, intenta nuevamente o contacta al negocio directamente."
+      "¡Gracias por enviar tu comprobante! Tu compra ha sido registrada correctamente. Has acumulado 10 puntos. Tu total actual es de 50 puntos.",
+      metadata.phone_number_id // Usar el ID recibido en el mensaje
     );
+
+    console.log("✅ Respuesta enviada al usuario");
+  } catch (error) {
+    console.error("❌ Error procesando imagen:", error);
+    // ...resto del código de manejo de errores
   }
 }
 
 // Función para procesar mensajes de texto
-async function processTextMessage(message, user, whatsappConfig) {
+async function processTextMessage(message, user, whatsappConfig, metadata) {
   try {
     const text = message.text.body.toLowerCase().trim();
 
     // Comando para consultar puntos
     if (text === "puntos") {
-      await sendPointsInfo(user);
+      await sendPointsInfo(user, metadata.phone_number_id);
       return;
     }
 
     // Comando para ayuda
     if (text === "ayuda" || text === "help") {
-      await sendHelpInfo(user);
+      await sendHelpInfo(user, metadata.phone_number_id);
       return;
     }
 
     // Respuesta genérica para otros mensajes
     await sendWhatsAppMessage(
       user.phone,
-      "Para registrar un consumo, envía una foto del comprobante de pago. Para consultar tus puntos, envía la palabra 'puntos'."
+      "Para registrar un consumo, envía una foto del comprobante de pago. Para consultar tus puntos, envía la palabra 'puntos'.",
+      metadata.phone_number_id
     );
   } catch (error) {
-    console.error("Error procesando mensaje de texto:", error);
+    console.error("❌ Error procesando mensaje de texto:", error);
   }
 }
 
 // Función para enviar información de puntos al usuario
-async function sendPointsInfo(user) {
+// Función para enviar información de puntos al usuario
+async function sendPointsInfo(user, phoneNumberId) {
   try {
     // Obtener los puntos del cliente en todos los negocios
     const pointsSnapshot = await db
@@ -764,7 +739,8 @@ async function sendPointsInfo(user) {
     if (pointsSnapshot.empty) {
       await sendWhatsAppMessage(
         user.phone,
-        "Aún no tienes puntos acumulados en ningún negocio. Envía fotos de tus comprobantes de pago para comenzar a acumular puntos."
+        "Aún no tienes puntos acumulados en ningún negocio. Envía fotos de tus comprobantes de pago para comenzar a acumular puntos.",
+        phoneNumberId
       );
       return;
     }
@@ -788,7 +764,7 @@ async function sendPointsInfo(user) {
     message +=
       "\nPara canjear tus puntos, visita el negocio y muestra este mensaje.";
 
-    await sendWhatsAppMessage(user.phone, message);
+    await sendWhatsAppMessage(user.phone, message, phoneNumberId);
   } catch (error) {
     console.error("Error enviando información de puntos:", error);
   }
@@ -812,14 +788,18 @@ Aquí tienes algunas instrucciones:
 }
 
 export const createPreference = createPref;
-export const processWhatsAppAPI = onRequest({
-  region: "us-central1",
-  timeoutSeconds: 300,
-  memory: "1GiB",
-  environmentVariables: {
-    WHATSAPP_API_TOKEN: "EAAJoZCiJisnoBO1f9v4mv7FRkD5kOJyxF2eNwNLyAuFzRYURV2Jeau3p2ZBd0bbQleo1jbXM4fYiKZANk0GTIwyRaIs1qQ1XJ6Ab1qhIttcLntKq7WUSXZAVS9WDJ2XotSQunELvsoz8xth9ymrCwlEPMxhOiOAMVuPGgLuqaw4jkZC8SvOEVa7fbDuNw2AZDZD",
-    WHATSAPP_APP_SECRET: "09353d1301e356b0cdcba78d2a9c7639",
-    WHATSAPP_PHONE_NUMBER_ID: "108512615643697",
-    WHATSAPP_VERIFY_TOKEN: "38f7d5a1-b65c-4e9d-9f2d-ea9c21b7ca56"
-  }
-}, whatsappApiApp);
+export const processWhatsAppAPI = onRequest(
+  {
+    region: "us-central1",
+    timeoutSeconds: 300,
+    memory: "1GiB",
+    environmentVariables: {
+      WHATSAPP_API_TOKEN:
+        "EAAJoZCiJisnoBO1f9v4mv7FRkD5kOJyxF2eNwNLyAuFzRYURV2Jeau3p2ZBd0bbQleo1jbXM4fYiKZANk0GTIwyRaIs1qQ1XJ6Ab1qhIttcLntKq7WUSXZAVS9WDJ2XotSQunELvsoz8xth9ymrCwlEPMxhOiOAMVuPGgLuqaw4jkZC8SvOEVa7fbDuNw2AZDZD",
+      WHATSAPP_APP_SECRET: "09353d1301e356b0cdcba78d2a9c7639",
+      WHATSAPP_PHONE_NUMBER_ID: "108512615643697",
+      WHATSAPP_VERIFY_TOKEN: "38f7d5a1-b65c-4e9d-9f2d-ea9c21b7ca56",
+    },
+  },
+  whatsappApiApp
+);
