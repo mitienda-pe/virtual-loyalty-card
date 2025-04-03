@@ -25,6 +25,7 @@ const routes = [
         name: "AdminDashboard",
         component: () => import("@/views/admin/Dashboard.vue"),
       },
+      // Rutas para SuperAdmin
       {
         path: "businesses",
         name: "BusinessList",
@@ -42,6 +43,116 @@ const routes = [
         name: "BusinessEdit",
         component: () => import("@/views/admin/BusinessForm.vue"),
         meta: { requiresSuperAdmin: true },
+      },
+      // Nuevas rutas para gestión de usuarios (SuperAdmin)
+      {
+        path: "users",
+        name: "UserList",
+        component: () => import("@/views/admin/UserList.vue"),
+        meta: { requiresSuperAdmin: true },
+      },
+      {
+        path: "users/new",
+        name: "UserCreate",
+        component: () => import("@/views/admin/UserForm.vue"),
+        meta: { requiresSuperAdmin: true },
+      },
+      {
+        path: "users/:id/edit",
+        name: "UserEdit",
+        component: () => import("@/views/admin/UserForm.vue"),
+        meta: { requiresSuperAdmin: true },
+      },
+      // Ruta para estadísticas (SuperAdmin)
+      {
+        path: "statistics",
+        name: "Statistics",
+        component: () => import("@/views/admin/Statistics.vue"),
+        meta: { requiresSuperAdmin: true },
+      },
+      // Ruta para configuración de WhatsApp (SuperAdmin)
+      {
+        path: "whatsapp",
+        name: "WhatsAppConfig",
+        component: () => import("@/views/admin/WhatsAppConfig.vue"),
+        meta: { requiresSuperAdmin: true },
+      },
+      // Ruta para perfil de usuario
+      {
+        path: "profile",
+        name: "AdminProfile",
+        component: () => import("@/views/admin/Profile.vue"),
+      },
+      // Rutas para Business Admin
+      {
+        path: "business/dashboard",
+        name: "BusinessDashboard",
+        component: () => import("@/views/admin/business/Dashboard.vue"),
+        meta: { requiresBusinessAdmin: true },
+      },
+      {
+        path: "business/clients",
+        name: "BusinessClients",
+        component: () => import("@/views/admin/business/ClientList.vue"),
+        meta: { requiresBusinessAdmin: true },
+      },
+      {
+        path: "business/transactions",
+        name: "BusinessTransactions",
+        component: () => import("@/views/admin/business/TransactionList.vue"),
+        meta: { requiresBusinessAdmin: true },
+      },
+      {
+        path: "business/rewards",
+        name: "BusinessRewards",
+        component: () => import("@/views/admin/business/RewardList.vue"),
+        meta: { requiresBusinessAdmin: true },
+      },
+      {
+        path: "business/rewards/new",
+        name: "BusinessRewardCreate",
+        component: () => import("@/views/admin/business/RewardForm.vue"),
+        meta: { requiresBusinessAdmin: true },
+      },
+      {
+        path: "business/rewards/:id/edit",
+        name: "BusinessRewardEdit",
+        component: () => import("@/views/admin/business/RewardForm.vue"),
+        meta: { requiresBusinessAdmin: true },
+      },
+    ],
+  },
+  // Rutas para Business Client
+  {
+    path: "/client",
+    component: () => import("@/views/client/ClientLayout.vue"),
+    meta: { requiresAuth: true, requiresBusinessClient: true },
+    children: [
+      {
+        path: "",
+        name: "ClientDashboard",
+        component: () => import("@/views/client/Dashboard.vue"),
+      },
+      {
+        path: "businesses",
+        name: "ClientBusinesses",
+        component: () => import("@/views/client/BusinessList.vue"),
+      },
+      {
+        path: "business/:businessId",
+        name: "ClientBusinessDetail",
+        component: () => import("@/views/client/BusinessDetail.vue"),
+        props: true,
+      },
+      {
+        path: "transactions",
+        name: "ClientTransactions",
+        component: () => import("@/views/client/TransactionList.vue"),
+      },
+      {
+        path: "rewards",
+        name: "ClientRewards",
+        component: () => import("@/views/client/RewardList.vue"),
       },
     ],
   },
@@ -95,7 +206,12 @@ router.beforeEach(async (to, from, next) => {
     return;
   }
 
-  if (to.meta.requiresAdmin && !authStore.isAdmin && !authStore.isSuperAdmin) {
+  if (to.meta.requiresBusinessAdmin && !authStore.isBusinessAdmin && !authStore.isSuperAdmin) {
+    next("/admin");
+    return;
+  }
+
+  if (to.meta.requiresBusinessClient && !authStore.isBusinessClient) {
     next("/admin");
     return;
   }

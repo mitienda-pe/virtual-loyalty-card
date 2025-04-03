@@ -6,7 +6,7 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
 } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { auth, db } from "@/firebase";
 
 export const useAuthStore = defineStore(
@@ -16,20 +16,51 @@ export const useAuthStore = defineStore(
     const role = ref(null);
     const businessId = ref(null);
     const initialized = ref(false);
+    const clientBusinesses = ref([]);
 
     const isAuthenticated = computed(() => !!user.value);
     const isSuperAdmin = computed(() => role.value === "super-admin");
-    const isAdmin = computed(() => role.value === "admin");
-    const isUser = computed(() => role.value === "user");
+    const isBusinessAdmin = computed(() => role.value === "business-admin");
+    const isBusinessClient = computed(() => role.value === "business-client");
 
     async function loadUserRole() {
       if (!user.value) return;
 
       const userDoc = await getDoc(doc(db, "users", user.value.uid));
       if (userDoc.exists()) {
-        role.value = userDoc.data().role;
-        businessId.value = userDoc.data().businessId || null;
+        const userData = userDoc.data();
+        role.value = userData.role;
+        
+        // Si es un admin de negocio, cargamos su businessId
+        if (userData.role === "business-admin") {
+          businessId.value = userData.businessId || null;
+        } else {
+          businessId.value = null;
+        }
+        
+        // Si es un cliente, cargamos todos los negocios a los que pertenece
+        if (userData.role === "business-client") {
+          await loadClientBusinesses();
+        } else {
+          clientBusinesses.value = [];
+        }
       }
+    }
+    
+    async function loadClientBusinesses() {
+      if (!user.value || role.value !== "business-client") return;
+      
+      // Consultar la colección client_businesses para obtener todos los negocios del cliente
+      const clientBusinessesQuery = query(
+        collection(db, "client_businesses"),
+        where("clientId", "==", user.value.uid)
+      );
+      
+      const snapshot = await getDocs(clientBusinessesQuery);
+      clientBusinesses.value = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
     }
 
     async function signIn(email, password) {
@@ -47,6 +78,7 @@ export const useAuthStore = defineStore(
       user.value = null;
       role.value = null;
       businessId.value = null;
+      clientBusinesses.value = [];
     }
 
     async function initialize() {
@@ -58,6 +90,7 @@ export const useAuthStore = defineStore(
           } else {
             role.value = null;
             businessId.value = null;
+            clientBusinesses.value = [];
           }
           initialized.value = true;
           unsubscribe();
@@ -73,20 +106,22 @@ export const useAuthStore = defineStore(
       user,
       role,
       businessId,
+      clientBusinesses,
       initialized,
       isAuthenticated,
       isSuperAdmin,
-      isAdmin,
-      isUser,
+      isBusinessAdmin,
+      isBusinessClient,
       signIn,
       signOut,
+      loadClientBusinesses,
     };
   },
   {
     persist: {
       key: "auth-store",
       storage: localStorage,
-      paths: ["user", "role", "businessId"],
+      paths: ["user", "role", "businessId", "clientBusinesses"],
     },
   }
 );
