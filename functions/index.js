@@ -1,5 +1,5 @@
-process.env.NODE_ENV = "development";
-console.log("¡IMPORTANTE! Entorno forzado a:", process.env.NODE_ENV);
+// process.env.NODE_ENV = "development";
+// console.log("¡IMPORTANTE! Entorno forzado a:", process.env.NODE_ENV);
 
 // functions/index.js
 import { onRequest } from "firebase-functions/v2/https";
@@ -16,16 +16,13 @@ import * as functions from "firebase-functions";
 process.env.NODE_ENV = process.env.NODE_ENV || "development";
 console.log("Modo de entorno:", process.env.NODE_ENV);
 
+const config = functions.config();
+
 // Definir parámetros de entorno para WhatsApp con valores predeterminados
-const whatsappPhoneNumberId =
-  process.env.WHATSAPP_PHONE_NUMBER_ID || "108512615643697";
-const whatsappVerifyToken =
-  process.env.WHATSAPP_VERIFY_TOKEN || "38f7d5a1-b65c-4e9d-9f2d-ea9c21b7ca56";
-const whatsappApiToken =
-  process.env.WHATSAPP_API_TOKEN ||
-  "EAAJoZCiJisnoBO1f9v4mv7FRkD5kOJyxF2eNwNLyAuFzRYURV2Jeau3p2ZBd0bbQleo1jbXM4fYiKZANk0GTIwyRaIs1qQ1XJ6Ab1qhIttcLntKq7WUSXZAVS9WDJ2XotSQunELvsoz8xth9ymrCwlEPMxhOiOAMVuPGgLuqaw4jkZC8SvOEVa7fbDuNw2AZDZD";
-const whatsappAppSecret =
-  process.env.WHATSAPP_APP_SECRET || "09353d1301e356b0cdcba78d2a9c7639";
+const whatsappPhoneNumberId = config.WHATSAPP_PHONE_NUMBER_ID;
+const whatsappVerifyToken = config.WHATSAPP_VERIFY_TOKEN;
+const whatsappApiToken = config.WHATSAPP_API_TOKEN;
+const whatsappAppSecret = config.WHATSAPP_APP_SECRET;
 
 // Inicializar Vision API client
 const visionClient = new ImageAnnotatorClient();
@@ -793,13 +790,13 @@ export const processWhatsAppAPI = onRequest(
     region: "us-central1",
     timeoutSeconds: 300,
     memory: "1GiB",
-    environmentVariables: {
-      WHATSAPP_API_TOKEN:
-        "EAAJoZCiJisnoBO1f9v4mv7FRkD5kOJyxF2eNwNLyAuFzRYURV2Jeau3p2ZBd0bbQleo1jbXM4fYiKZANk0GTIwyRaIs1qQ1XJ6Ab1qhIttcLntKq7WUSXZAVS9WDJ2XotSQunELvsoz8xth9ymrCwlEPMxhOiOAMVuPGgLuqaw4jkZC8SvOEVa7fbDuNw2AZDZD",
-      WHATSAPP_APP_SECRET: "09353d1301e356b0cdcba78d2a9c7639",
-      WHATSAPP_PHONE_NUMBER_ID: "108512615643697",
-      WHATSAPP_VERIFY_TOKEN: "38f7d5a1-b65c-4e9d-9f2d-ea9c21b7ca56",
-    },
+    // environmentVariables: {
+    //   WHATSAPP_API_TOKEN:
+    //     "EAAJoZCiJisnoBO1f9v4mv7FRkD5kOJyxF2eNwNLyAuFzRYURV2Jeau3p2ZBd0bbQleo1jbXM4fYiKZANk0GTIwyRaIs1qQ1XJ6Ab1qhIttcLntKq7WUSXZAVS9WDJ2XotSQunELvsoz8xth9ymrCwlEPMxhOiOAMVuPGgLuqaw4jkZC8SvOEVa7fbDuNw2AZDZD",
+    //   WHATSAPP_APP_SECRET: "09353d1301e356b0cdcba78d2a9c7639",
+    //   WHATSAPP_PHONE_NUMBER_ID: "108512615643697",
+    //   WHATSAPP_VERIFY_TOKEN: "38f7d5a1-b65c-4e9d-9f2d-ea9c21b7ca56",
+    // },
   },
   whatsappApiApp
 );

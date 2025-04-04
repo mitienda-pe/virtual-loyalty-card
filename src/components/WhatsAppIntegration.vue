@@ -143,7 +143,7 @@
                 placeholder="Contenido de la plantilla"
               ></textarea>
               <div class="form-text">
-                <small>Puedes usar variables como {{'{{'}}points{{'}}'}}, {{'{{'}}business{{'}}'}}, etc.</small>
+                <small v-pre>Puedes usar variables como {{points}}, {{business}}, etc.</small>
               </div>
             </div>
           </div>

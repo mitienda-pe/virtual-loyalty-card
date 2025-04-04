@@ -1,8 +1,0 @@
-{
-    "mercadopago": {
-        "access_token": "APP_USR-6287755639405944-011422-b12f36cba6de5c6c9e6dd6a7e0884635-2214675352"
-    },
-    "frontend": {
-        "url": "http://localhost:5173"
-    }
-}

@@ -198,27 +198,46 @@ const formatDate = (date) => {
 
 // Data loading functions
 const loadBusinessData = async () => {
-    const businessDoc = await getDoc(doc(db, 'businesses', businessSlug.value));
-
-    if (!businessDoc.exists()) {
-        throw new Error('Negocio no encontrado');
+    console.log('Cargando datos del negocio con slug:', businessSlug.value);
+    try {
+        const businessDoc = await getDoc(doc(db, 'businesses', businessSlug.value));
+        console.log('Respuesta de Firestore para el negocio:', businessDoc);
+        console.log('¿El documento existe?', businessDoc.exists());
+        
+        if (!businessDoc.exists()) {
+            console.error('Negocio no encontrado en Firestore:', businessSlug.value);
+            throw new Error('Negocio no encontrado');
+        }
+        
+        business.value = {
+            id: businessDoc.id,
+            ...businessDoc.data()
+        };
+        console.log('Datos del negocio cargados correctamente:', business.value);
+    } catch (err) {
+        console.error('Error al cargar datos del negocio:', err);
+        throw err;
     }
-
-    business.value = {
-        id: businessDoc.id,
-        ...businessDoc.data()
-    };
 };
 
 const loadCustomerData = async () => {
-    const customerDoc = await getDoc(doc(db, 'customers', phone.value));
-
-    if (!customerDoc.exists()) {
-        customerData.value = null;
-        return;
+    console.log('Cargando datos del cliente con teléfono:', phone.value);
+    try {
+        const customerDoc = await getDoc(doc(db, 'customers', phone.value));
+        console.log('¿El documento del cliente existe?', customerDoc.exists());
+        
+        if (!customerDoc.exists()) {
+            console.log('Cliente no encontrado, se creará un nuevo registro si es necesario');
+            customerData.value = null;
+            return;
+        }
+        
+        customerData.value = customerDoc.data();
+        console.log('Datos del cliente cargados:', customerData.value);
+    } catch (err) {
+        console.error('Error al cargar datos del cliente:', err);
+        // No lanzamos error aquí para permitir clientes nuevos
     }
-
-    customerData.value = customerDoc.data();
 };
 
 // Validation function
@@ -235,19 +254,28 @@ const updateTitle = () => {
 
 // Lifecycle hooks
 onMounted(async () => {
+    console.log('Componente LoyaltyCard montado');
+    console.log('Parámetros de ruta:', route.params);
+    console.log('Business slug:', businessSlug.value);
+    console.log('Teléfono:', phone.value);
+    
     try {
         if (!validatePhoneNumber(phone.value)) {
+            console.error('Número de teléfono inválido:', phone.value);
             throw new Error('Número de teléfono inválido');
         }
 
+        console.log('Iniciando carga de datos del negocio...');
         await loadBusinessData();
+        console.log('Iniciando carga de datos del cliente...');
         await loadCustomerData();
         updateTitle();
     } catch (err) {
-        console.error('Error:', err);
+        console.error('Error en el montaje del componente:', err);
         error.value = err.message || 'Error al cargar la tarjeta de fidelización';
     } finally {
         loading.value = false;
+        console.log('Estado final de carga:', { error: error.value, loading: loading.value });
     }
 });
 
