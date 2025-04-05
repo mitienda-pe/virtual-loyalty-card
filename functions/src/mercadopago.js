@@ -1,8 +1,23 @@
 // functions/src/mercadopago.js
-import { onRequest } from "firebase-functions/v2/https";
-import { MercadoPagoConfig, Preference } from "mercadopago";
+const { onRequest } = require("firebase-functions/v2/https");
+const { MercadoPagoConfig, Preference } = require("mercadopago");
 
-export const createPref = onRequest(
+// Función simplificada para obtener el token de Mercado Pago
+function getMercadoPagoToken() {
+  // Acceder directamente a la variable de entorno proporcionada por el secreto
+  const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  
+  if (token) {
+    console.log('🔑 Token de Mercado Pago obtenido desde secreto');
+    return token;
+  }
+  
+  // Fallback para desarrollo o si no se encuentra el secreto
+  console.log('💡 Usando token de prueba');
+  return 'TEST-5274008335450404-031316-d1d2c8e7a5a6a4f5c1b2d1d2c8e7a5a6-1234567';
+}
+
+const createPref = onRequest(
   {
     cors: [
       "http://localhost:5173",
@@ -14,14 +29,14 @@ export const createPref = onRequest(
     try {
       console.log("🚀 Iniciando función createPreference");
       console.log("📨 Request body:", JSON.stringify(req.body, null, 2));
-      console.log(
-        "🔑 Access token configurado:",
-        !!process.env.MERCADOPAGO_ACCESS_TOKEN
-      );
+      
+      // Obtener el token de acceso
+      const accessToken = getMercadoPagoToken();
+      console.log("🔑 Access token obtenido:", !!accessToken);
 
       // Configurar cliente
       const client = new MercadoPagoConfig({
-        accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN,
+        accessToken: accessToken,
       });
 
       // Comprobar que tenemos todos los datos necesarios
@@ -32,7 +47,7 @@ export const createPref = onRequest(
         total,
         businessName,
         ruc,
-        accessTokenLength: process.env.MERCADOPAGO_ACCESS_TOKEN?.length,
+        accessTokenLength: accessToken?.length,
       });
 
       // Crear datos de preferencia según documentación
@@ -93,8 +108,8 @@ export const createPref = onRequest(
   }
 );
 
-// src/services/mercadopago.js
-export const loadMercadoPagoScript = () => {
+// Esta función es para el frontend, no se usa en las funciones de Firebase
+const loadMercadoPagoScript = () => {
   return new Promise((resolve, reject) => {
     if (window.MercadoPago) {
       console.log("🔄 MercadoPago ya está cargado");
@@ -119,4 +134,9 @@ export const loadMercadoPagoScript = () => {
 
     document.body.appendChild(script);
   });
+};
+
+module.exports = {
+  createPref,
+  getMercadoPagoToken
 };

@@ -84,10 +84,10 @@
                     <div class="mt-6 p-4 bg-gray-50 rounded-lg text-left">
                         <h3 class="font-semibold text-gray-700 mb-2">Últimas compras</h3>
                         <div v-if="recentPurchases.length > 0">
-                            <div v-for="purchase in recentPurchases" :key="purchase.date"
+                            <div v-for="purchase in recentPurchases" :key="purchase.timestamp"
                                 class="flex justify-between items-center py-2 border-b border-gray-200 last:border-0">
                                 <span class="text-gray-600">
-                                    {{ formatDate(purchase.date) }}
+                                    {{ formatDate(purchase.timestamp) }}
                                 </span>
                                 <span class="font-medium">
                                     S/ {{ purchase.amount.toFixed(2) }}
@@ -180,20 +180,102 @@ const purchasesRequired = computed(() => {
 
 const recentPurchases = computed(() => {
     const purchases = customerData.value?.businesses?.[businessSlug.value]?.purchases || [];
-    return [...purchases]
-        .sort((a, b) => b.date.toMillis() - a.date.toMillis())
-        .slice(0, 5);
+    
+    // Crear una copia segura de los datos
+    const safePurchases = [...purchases].map(purchase => {
+        // Asegurarse de que cada compra tenga un campo timestamp válido
+        // Si no tiene timestamp pero tiene date (compatibilidad con versiones anteriores)
+        if (!purchase.timestamp && purchase.date) {
+            return {
+                ...purchase,
+                timestamp: purchase.date
+            };
+        }
+        return purchase;
+    });
+    
+    // Ordenar por fecha (de más reciente a más antigua)
+    return safePurchases.sort((a, b) => {
+        // Obtener timestamps en milisegundos para comparación
+        const getTimeInMillis = (purchase) => {
+            // Caso 1: Timestamp de Firestore (tiene toMillis)
+            if (purchase.timestamp?.toMillis) {
+                return purchase.timestamp.toMillis();
+            }
+            // Caso 2: Objeto Date de JavaScript
+            else if (purchase.timestamp instanceof Date) {
+                return purchase.timestamp.getTime();
+            }
+            // Caso 3: Compatibilidad con campo date anterior
+            else if (purchase.date?.toMillis) {
+                return purchase.date.toMillis();
+            }
+            // Caso 4: Date como objeto JavaScript
+            else if (purchase.date instanceof Date) {
+                return purchase.date.getTime();
+            }
+            // Caso 5: Valor numérico (timestamp en milisegundos)
+            else if (typeof purchase.timestamp === 'number') {
+                return purchase.timestamp;
+            }
+            // Caso 6: No hay fecha válida
+            return 0;
+        };
+        
+        const aTime = getTimeInMillis(a);
+        const bTime = getTimeInMillis(b);
+        
+        // Ordenar de más reciente a más antiguo
+        return bTime - aTime;
+    })
+    .slice(0, 5); // Mostrar solo las 5 compras más recientes
 });
 
 // Helpers
 const formatDate = (date) => {
     if (!date) return '';
-    const d = date.toDate();
-    return d.toLocaleDateString('es-PE', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    });
+    
+    try {
+        // Manejar diferentes tipos de objetos de fecha
+        let d;
+        
+        // Si es un objeto Firestore Timestamp (tiene toDate)
+        if (date.toDate) {
+            d = date.toDate();
+        }
+        // Si ya es un objeto Date de JavaScript
+        else if (date instanceof Date) {
+            d = date;
+        }
+        // Si es un número (timestamp en milisegundos)
+        else if (typeof date === 'number') {
+            d = new Date(date);
+        }
+        // Si es un string con formato ISO
+        else if (typeof date === 'string' && date.match(/\d{4}-\d{2}-\d{2}/)) {
+            d = new Date(date);
+        }
+        // Si no podemos determinar el tipo, intentar convertir directamente
+        else {
+            console.warn('Intentando convertir formato de fecha desconocido:', date);
+            d = new Date(date);
+            
+            // Verificar si la fecha es válida
+            if (isNaN(d.getTime())) {
+                console.error('No se pudo convertir a fecha válida:', date);
+                return '';
+            }
+        }
+        
+        return d.toLocaleDateString('es-PE', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    } catch (error) {
+        console.error('Error al formatear fecha:', error, date);
+        return '';
+    }
 };
 
 // Data loading functions
