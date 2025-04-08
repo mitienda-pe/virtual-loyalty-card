@@ -24,6 +24,7 @@ const {
 const firestoreService = require("./src/services/firestoreService");
 const { createPref } = require("./src/mercadopago");
 const { processQueueItems } = require("./src/whatsapp/queueProcessor");
+const { processImageTask } = require("./src/whatsapp/processImageTask");
 
 // Pasar la instancia de Firestore al servicio
 firestoreService.setFirestoreDb(db);
@@ -45,6 +46,9 @@ const WHATSAPP_API_TOKEN =
   "EAAJoZCiJisnoBO0yyXeggilcH3O4U6pdKulFgixx2O3cRU8TULkI6OWrqeCTLIkUOwQfJjVx9NKKosAOJVbT2QqK43zhYlIF2GAZAUj2fvpSb9T0OMDZB4ZCQL4emlz9nUaFjljmg5iYhHYnSHAezLfz7yBgb3hzudZBRsvFBtpUIZBZCwP9ST6WJQDqdMO4wZDZD";
 const WHATSAPP_APP_SECRET =
   process.env.WHATSAPP_APP_SECRET || "09353d1301e356b0cdcba78d2a9c7639";
+
+// Exportar la función de procesamiento de imágenes con Cloud Tasks
+exports.processImageTask = processImageTask;
 
 // Función simple para probar que la configuración funciona
 exports.helloWorld = onRequest(

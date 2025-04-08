@@ -9,6 +9,7 @@ const { extractRUCAndAmount } = require("../utils/textExtraction");
 const { normalizePhoneNumber } = require("../utils/phoneUtils");
 const firestoreService = require("../services/firestoreService");
 const queueService = require("../services/queueService");
+const { createImageProcessingTask } = require('../services/cloudTasksService');
 
 // Alias para funciones de Firestore para mayor legibilidad
 const {
@@ -246,35 +247,81 @@ Ver tu tarjeta de fidelidad: https://asiduo.club/${
         throw downloadError; // Propagar el error si no podemos descargar la imagen
       }
       
-      // Agregar a la cola de procesamiento
+      // Agregar a Cloud Tasks para procesamiento
       // Asegurar que el usuario tenga un número de teléfono normalizado
       const normalizedPhone = normalizePhoneNumber(user.phone);
       
-      // Crear una copia del usuario con el teléfono normalizado para evitar problemas en el procesamiento de la cola
-      const userForQueue = {
+      // Crear una copia del usuario con el teléfono normalizado para evitar problemas en el procesamiento
+      const userForTask = {
         ...user,
         phone: normalizedPhone, // Asegurar que el teléfono esté normalizado
-        phoneNumber: normalizedPhone // Agregar una propiedad alternativa por si acaso
+        phoneNumber: normalizedPhone, // Agregar una propiedad alternativa por si acaso
+        profile: {
+          ...(user.profile || {}),
+          phoneNumber: normalizedPhone // Agregar al perfil también
+        }
       };
       
-      console.log(`📱 Teléfono normalizado para la cola: ${normalizedPhone}`);
+      console.log(`📱 Teléfono normalizado para Cloud Tasks: ${normalizedPhone}`);
       
-      const queueItemData = {
-        imageBuffer,
-        user: userForQueue, // Usar la versión con teléfono garantizado
+      // Convertir el buffer a base64 para enviarlo a Cloud Tasks
+      const base64Image = Buffer.from(imageBuffer).toString('base64');
+      
+      const taskData = {
+        imageBuffer: base64Image,
+        user: userForTask,
         phoneNumberId,
         apiToken,
         imageId,
         metadata: {
           ...metadata,
-          addedToQueueAt: new Date().toISOString(),
+          addedToTasksAt: new Date().toISOString(),
           originalError: processingError.message,
-          phoneNumber: normalizedPhone // Agregar el teléfono también en los metadatos
+          phoneNumber: normalizedPhone
         }
       };
       
-      const queueId = await queueService.addToQueue(queueItemData);
-      console.log(`✅ Imagen agregada a la cola con ID: ${queueId}`);
+      // Intentar usar Cloud Tasks primero
+      let taskId = null;
+      try {
+        taskId = await createImageProcessingTask(taskData);
+        if (taskId) {
+          console.log(`✅ Imagen agregada a Cloud Tasks con ID: ${taskId}`);
+        }
+      } catch (cloudTasksError) {
+        console.error("Error al crear tarea en Cloud Tasks:", cloudTasksError);
+        // No lanzamos el error para poder usar el mecanismo de respaldo
+      }
+      
+      // Si Cloud Tasks falló o no está disponible, usar la cola tradicional de Firestore
+      if (!taskId) {
+        console.log("Cloud Tasks no disponible o falló, usando cola de respaldo de Firestore");
+        try {
+          const queueId = await queueService.addToQueue({
+            ...taskData,
+            imageBuffer, // Usar el buffer original para la cola de respaldo
+            cloudTasksAttempted: true // Indicar que se intentó usar Cloud Tasks primero
+          });
+          console.log(`✅ Imagen agregada a la cola de respaldo con ID: ${queueId}`);
+        } catch (queueError) {
+          console.error("Error al agregar a la cola de respaldo:", queueError);
+          throw queueError; // En este caso sí lanzamos el error porque es nuestro último recurso
+        }
+      } else {
+        // Si Cloud Tasks funcionó, también agregamos a la cola tradicional como respaldo
+        try {
+          const queueId = await queueService.addToQueue({
+            ...taskData,
+            imageBuffer, // Usar el buffer original para la cola de respaldo
+            taskId, // Agregar referencia al taskId de Cloud Tasks
+            isBackup: true // Indicar que esta es una copia de respaldo
+          });
+          console.log(`✅ Imagen también agregada a la cola de respaldo con ID: ${queueId}`);
+        } catch (queueError) {
+          console.error("Error al agregar a la cola de respaldo:", queueError);
+          // No lanzamos el error para no interrumpir el flujo principal
+        }
+      }
       
       // Informar al usuario que el procesamiento continuará en segundo plano
       await sendWhatsAppMessage(
