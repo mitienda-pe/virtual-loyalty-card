@@ -1,11 +1,11 @@
 // functions/src/whatsapp/processImageTask.js
 const functions = require('firebase-functions');
 const admin = require('firebase-admin');
-const { processImageWithVision } = require('./visionProcessor');
-const { sendWhatsAppMessage } = require('./whatsappApi');
+const { processImageWithVision } = require('../services/visionService');
+const { sendWhatsAppMessage } = require('./messaging');
 const { normalizePhoneNumber } = require('../utils/phoneUtils');
-const { extractReceiptData } = require('./receiptProcessor');
-const { registerPurchase } = require('../services/purchaseService');
+const { extractRUCAndAmount } = require('../utils/textExtraction');
+const { registerPurchase, findBusinessByRUC } = require('../services/firestoreService');
 const { updateTaskStatus } = require('../services/cloudTasksService');
 
 // Configuración para WhatsApp
@@ -104,7 +104,7 @@ exports.processImageTask = functions
       
       // Extraer datos del recibo
       console.log("🧾 Extrayendo datos del recibo...");
-      const receiptData = await extractReceiptData(extractedText);
+      const receiptData = extractRUCAndAmount(extractedText);
       
       if (!receiptData || !receiptData.ruc) {
         console.error("No se pudo identificar un RUC válido en el recibo");
@@ -115,20 +115,40 @@ exports.processImageTask = functions
       
       // Registrar la compra en la base de datos
       console.log("💾 Registrando compra en la base de datos...");
+      
+      // Buscar el negocio usando el RUC
+      const business = await findBusinessByRUC(receiptData.ruc);
+      const businessSlug = business?.businessSlug || receiptData.businessSlug;
+      
+      if (!businessSlug) {
+        console.error(`No se encontró un negocio registrado con el RUC: ${receiptData.ruc}`);
+        throw new Error(`No se encontró un negocio registrado con el RUC: ${receiptData.ruc}`);
+      }
+      
       const purchaseResult = await registerPurchase(
-        user,
-        receiptData,
-        imageBuffer, // Guardar la imagen original
-        true // Verificado automáticamente
+        businessSlug,
+        user.phone,
+        receiptData.amount,
+        null, // URL de imagen (se actualizará después)
+        {
+          ruc: receiptData.ruc,
+          invoiceNumber: receiptData.invoiceId,
+          businessName: receiptData.businessName,
+          address: receiptData.address,
+          customerName: user.name || "Cliente",
+          verified: true,
+          processedFromCloudTasks: true,
+          taskId: taskId || req.body.taskId
+        }
       );
       
       // Enviar mensaje de confirmación al usuario
       console.log("📱 Enviando confirmación por WhatsApp...");
-      let confirmationMessage = `¡Gracias por tu compra en ${purchaseResult.businessName || 'el comercio'}!\n\n`;
+      let confirmationMessage = `¡Gracias por tu compra en ${business?.name || receiptData.businessName || 'el comercio'}!\n\n`;
       confirmationMessage += `Monto: S/ ${receiptData.amount}\n`;
       confirmationMessage += `Fecha: ${new Date().toLocaleDateString('es-PE')}\n\n`;
       confirmationMessage += `Puedes ver tu tarjeta de fidelización aquí:\n`;
-      confirmationMessage += `https://virtual-loyalty-card-e37c9.firebaseapp.com/${purchaseResult.businessSlug}/${userPhoneNormalized}`;
+      confirmationMessage += `https://virtual-loyalty-card-e37c9.firebaseapp.com/${businessSlug}/${userPhoneNormalized}`;
       
       await sendWhatsAppMessage(
         userPhoneNormalized,
