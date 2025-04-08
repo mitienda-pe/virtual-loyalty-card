@@ -29,6 +29,8 @@ const createPref = onRequest(
     environmentVariables: {
       MERCADOPAGO_ACCESS_TOKEN: process.env.MERCADOPAGO_ACCESS_TOKEN || ""
     },
+    // Especificar Node.js 22 como runtime
+    runtime: "nodejs22",
   },
   async (req, res) => {
     try {

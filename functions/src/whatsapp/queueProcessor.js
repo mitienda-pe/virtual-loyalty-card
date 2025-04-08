@@ -33,6 +33,8 @@ const processQueueItems = onSchedule({
     WHATSAPP_APP_SECRET: process.env.WHATSAPP_APP_SECRET || "",
     WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN || ""
   },
+  // Especificar Node.js 22 como runtime
+  runtime: "nodejs22",
   timeoutSeconds: 540, // 9 minutos (máximo para funciones programadas)
   memory: "1GiB",
 }, async (event) => {

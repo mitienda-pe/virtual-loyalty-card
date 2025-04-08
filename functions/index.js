@@ -56,6 +56,8 @@ exports.helloWorld = onRequest(
       WHATSAPP_PHONE_NUMBER_ID: WHATSAPP_PHONE_NUMBER_ID,
       WHATSAPP_VERIFY_TOKEN: WHATSAPP_VERIFY_TOKEN,
     },
+    // Especificar Node.js 22 como runtime
+    runtime: "nodejs22",
   },
   (req, res) => {
     res.send("Hello from Firebase!");
@@ -330,6 +332,8 @@ exports.processWhatsAppAPI = onRequest(
       WHATSAPP_PHONE_NUMBER_ID: WHATSAPP_PHONE_NUMBER_ID,
       WHATSAPP_VERIFY_TOKEN: WHATSAPP_VERIFY_TOKEN,
     },
+    // Especificar Node.js 22 como runtime
+    runtime: "nodejs22",
   },
   whatsappApiApp
 );
