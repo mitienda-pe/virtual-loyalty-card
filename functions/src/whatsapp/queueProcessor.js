@@ -58,7 +58,7 @@ const processQueueItems = onSchedule({
         await queueService.markAsProcessing(item.id);
         
         // Extraer datos del elemento
-        const { imageBuffer, user, phoneNumberId, apiToken } = item.data;
+        const { imageBuffer, user, phoneNumberId, apiToken, metadata } = item.data;
         
         // Validar que tengamos todos los datos necesarios
         if (!imageBuffer) {
@@ -72,15 +72,32 @@ const processQueueItems = onSchedule({
           throw new Error('Información de usuario no disponible');
         }
         
+        // Obtener el número de teléfono del usuario de múltiples fuentes posibles
+        let phoneNumber = null;
+        
+        // Intentar obtener el teléfono de diferentes lugares para mayor robustez
+        if (user.phone) {
+          phoneNumber = user.phone;
+          console.log(`Teléfono encontrado en user.phone: ${phoneNumber}`);
+        } else if (user.phoneNumber) {
+          phoneNumber = user.phoneNumber;
+          console.log(`Teléfono encontrado en user.phoneNumber: ${phoneNumber}`);
+        } else if (metadata && metadata.phoneNumber) {
+          phoneNumber = metadata.phoneNumber;
+          console.log(`Teléfono encontrado en metadata.phoneNumber: ${phoneNumber}`);
+        }
+        
         // Validar que tengamos el número de teléfono del usuario
-        if (!user.phone) {
-          console.error(`Error en elemento ${item.id}: Número de teléfono no disponible`);
+        if (!phoneNumber) {
+          console.error(`Error en elemento ${item.id}: Número de teléfono no disponible en ninguna propiedad`);
           throw new Error('Número de teléfono del usuario no disponible');
         }
         
-        // Normalizar el número de teléfono
-        user.phone = normalizePhoneNumber(user.phone);
-        console.log(`Teléfono normalizado: ${user.phone}`);
+        // Normalizar el número de teléfono y asegurarnos de que esté disponible en todas las propiedades necesarias
+        const queueItemPhone = normalizePhoneNumber(phoneNumber);
+        user.phone = queueItemPhone;
+        user.phoneNumber = queueItemPhone; // Agregar propiedad alternativa
+        console.log(`Teléfono normalizado: ${queueItemPhone}`);
         
         // Validar que tengamos el ID del número de teléfono de WhatsApp
         if (!phoneNumberId && !WHATSAPP_PHONE_NUMBER_ID) {
@@ -112,18 +129,33 @@ const processQueueItems = onSchedule({
         
         // Intentar notificar al usuario sobre el error
         try {
-          const { user, phoneNumberId, apiToken } = item.data;
+          const { user, phoneNumberId, apiToken, metadata } = item.data;
+          
+          // Intentar obtener el número de teléfono de varias fuentes posibles
+          let phoneNumber = null;
+          
+          if (user && user.phone) {
+            phoneNumber = user.phone;
+          } else if (user && user.phoneNumber) {
+            phoneNumber = user.phoneNumber;
+          } else if (metadata && metadata.phoneNumber) {
+            phoneNumber = metadata.phoneNumber;
+          }
           
           // Verificar que tengamos un número de teléfono válido
-          if (user && user.phone) {
+          if (phoneNumber) {
+            // Normalizar el número de teléfono antes de enviar el mensaje
+            const notificationPhone = normalizePhoneNumber(phoneNumber);
+            console.log(`Enviando notificación de error al teléfono: ${notificationPhone}`);
+            
             await sendWhatsAppMessage(
-              user.phone,
+              notificationPhone,
               "Lo sentimos, hubo un problema al procesar tu comprobante. Por favor, intenta nuevamente con una imagen más clara.",
               phoneNumberId || WHATSAPP_PHONE_NUMBER_ID,
               apiToken || WHATSAPP_API_TOKEN
             );
           } else {
-            console.error("No se pudo notificar al usuario: número de teléfono no disponible");
+            console.error("No se pudo notificar al usuario: número de teléfono no disponible en ninguna propiedad");
           }
         } catch (notifyError) {
           console.error("Error al notificar al usuario:", notifyError);
@@ -160,14 +192,34 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
     throw new Error('Información de usuario no disponible');
   }
   
-  if (!user.phone) {
-    console.error(`Error en elemento ${queueId}: Número de teléfono no disponible`);
+  // Verificar y obtener el número de teléfono del usuario de múltiples fuentes posibles
+  let phoneNumber = null;
+  
+  // Intentar obtener el teléfono de diferentes propiedades
+  if (user.phone) {
+    phoneNumber = user.phone;
+    console.log(`Teléfono encontrado en user.phone: ${phoneNumber}`);
+  } else if (user.phoneNumber) {
+    phoneNumber = user.phoneNumber;
+    console.log(`Teléfono encontrado en user.phoneNumber: ${phoneNumber}`);
+  } else if (user.profile && user.profile.phoneNumber) {
+    phoneNumber = user.profile.phoneNumber;
+    console.log(`Teléfono encontrado en user.profile.phoneNumber: ${phoneNumber}`);
+  }
+  
+  // Validar que tengamos un número de teléfono
+  if (!phoneNumber) {
+    console.error(`Error en elemento ${queueId}: Número de teléfono no disponible en ninguna propiedad`);
     throw new Error('Número de teléfono del usuario no disponible');
   }
   
-  // Normalizar el número de teléfono
-  user.phone = normalizePhoneNumber(user.phone);
-  console.log(`Teléfono normalizado: ${user.phone}`);
+  // Normalizar el número de teléfono y asegurarnos de que esté disponible en todas las propiedades necesarias
+  const userPhoneNormalized = normalizePhoneNumber(phoneNumber);
+  user.phone = userPhoneNormalized;
+  user.phoneNumber = userPhoneNormalized; // Agregar propiedad alternativa
+  if (!user.profile) user.profile = {};
+  user.profile.phoneNumber = userPhoneNormalized; // Agregar al perfil también
+  console.log(`Teléfono normalizado: ${userPhoneNormalized}`);
   
   // Procesar la imagen con Google Vision
   console.log("🔍 Procesando imagen con Vision API...");

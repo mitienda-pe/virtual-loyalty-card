@@ -247,16 +247,29 @@ Ver tu tarjeta de fidelidad: https://asiduo.club/${
       }
       
       // Agregar a la cola de procesamiento
+      // Asegurar que el usuario tenga un número de teléfono normalizado
+      const normalizedPhone = normalizePhoneNumber(user.phone);
+      
+      // Crear una copia del usuario con el teléfono normalizado para evitar problemas en el procesamiento de la cola
+      const userForQueue = {
+        ...user,
+        phone: normalizedPhone, // Asegurar que el teléfono esté normalizado
+        phoneNumber: normalizedPhone // Agregar una propiedad alternativa por si acaso
+      };
+      
+      console.log(`📱 Teléfono normalizado para la cola: ${normalizedPhone}`);
+      
       const queueItemData = {
         imageBuffer,
-        user,
+        user: userForQueue, // Usar la versión con teléfono garantizado
         phoneNumberId,
         apiToken,
         imageId,
         metadata: {
           ...metadata,
           addedToQueueAt: new Date().toISOString(),
-          originalError: processingError.message
+          originalError: processingError.message,
+          phoneNumber: normalizedPhone // Agregar el teléfono también en los metadatos
         }
       };
       
