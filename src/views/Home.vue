@@ -46,8 +46,10 @@
                     </div>
                     <div class="lg:w-1/2">
                         <div class="aspect-[9/16] w-full max-w-sm mx-auto bg-gray-100 rounded-xl overflow-hidden">
-                            <video :src="demoVideo" class="w-full h-full object-cover" autoplay loop muted
-                                playsinline></video>
+                            <!-- Replaced video with a placeholder div to avoid CORS issues -->
+                            <div class="w-full h-full flex items-center justify-center bg-blue-100">
+                                <p class="text-blue-600 font-medium text-center p-4">Demo Video Placeholder</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -356,7 +358,8 @@
 import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import logo from '@/assets/logo.svg';
-import demoVideo from 'https://storage.googleapis.com/virtual-loyalty-card-e37c9.firebasestorage.app/videos/4795437-hd_720_1366_25fps.mp4';
+// Using a placeholder instead of the external video that was causing CORS issues
+const demoVideo = null;
 import {
     ArrowRight,
     Store,

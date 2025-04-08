@@ -6,15 +6,15 @@ const { MercadoPagoConfig, Preference } = require("mercadopago");
 function getMercadoPagoToken() {
   // Acceder directamente a la variable de entorno proporcionada por el secreto
   const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
-  
+
   if (token) {
-    console.log('🔑 Token de Mercado Pago obtenido desde secreto');
+    console.log("🔑 Token de Mercado Pago obtenido desde secreto");
     return token;
   }
-  
+
   // Fallback para desarrollo o si no se encuentra el secreto
-  console.log('💡 Usando token de prueba');
-  return 'TEST-5274008335450404-031316-d1d2c8e7a5a6a4f5c1b2d1d2c8e7a5a6-1234567';
+  console.log("💡 Usando token de prueba");
+  return "TEST-5274008335450404-031316-d1d2c8e7a5a6a4f5c1b2d1d2c8e7a5a6-1234567";
 }
 
 const createPref = onRequest(
@@ -23,13 +23,18 @@ const createPref = onRequest(
       "http://localhost:5173",
       "https://virtual-loyalty-card-e37c9.web.app",
       "https://virtual-loyalty-card-e37c9.firebaseapp.com",
+      "https://asiduo.club",
     ],
+    // Agregar variables de entorno explícitamente
+    environmentVariables: {
+      MERCADOPAGO_ACCESS_TOKEN: process.env.MERCADOPAGO_ACCESS_TOKEN || ""
+    },
   },
   async (req, res) => {
     try {
       console.log("🚀 Iniciando función createPreference");
       console.log("📨 Request body:", JSON.stringify(req.body, null, 2));
-      
+
       // Obtener el token de acceso
       const accessToken = getMercadoPagoToken();
       console.log("🔑 Access token obtenido:", !!accessToken);
@@ -138,5 +143,5 @@ const loadMercadoPagoScript = () => {
 
 module.exports = {
   createPref,
-  getMercadoPagoToken
+  getMercadoPagoToken,
 };

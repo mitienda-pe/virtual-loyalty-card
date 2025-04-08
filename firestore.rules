@@ -1,6 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Regla temporal para permitir acceso completo durante la recuperación
+    // ¡IMPORTANTE! Eliminar esta regla después de la recuperación
+    match /{document=**} {
+      allow read, write: if true;
+    }
+    
+    // Reglas normales (comentadas durante la recuperación)
+    /*
     match /businesses/{slug} {
       allow read: if true;
       allow write: if request.auth != null && request.auth.token.admin == true;
@@ -20,5 +28,21 @@ service cloud.firestore {
       allow read: if true;
       allow write: if false;  // Solo escritura via Cloud Functions
     }
+    
+    match /processing_queue/{queueId} {
+      allow read: if false;  // Solo lectura via Cloud Functions
+      allow write: if false;  // Solo escritura via Cloud Functions
+    }
+    
+    match /users/{userId} {
+      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.admin == true);
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    match /ruc_business_map/{ruc} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    */
   }
 }

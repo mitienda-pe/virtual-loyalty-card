@@ -1556,7 +1556,7 @@ async function processImageMessage(message, user, whatsappConfig, metadata) {
     const businessData = customerData.businesses[businessSlug];
 
     // Construir URL de la tarjeta de fidelidad
-    const cardUrl = `https://virtual-loyalty-card-e37c9.firebaseapp.com/${businessSlug}/${normalizedPhone}`;
+    const cardUrl = `https://asiduo.club/${businessSlug}/${normalizedPhone}`;
     
     // Obtener nombre del negocio para mostrar
     const businessNameDisplay = businessInfo ? businessInfo.name : (extractedData.businessName || businessSlug);

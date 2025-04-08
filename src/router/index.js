@@ -172,6 +172,21 @@ const routes = [
     name: "Checkout",
     component: () => import("@/views/Checkout.vue"),
   },
+  {
+    path: "/privacy-policy",
+    name: "PrivacyPolicy",
+    component: () => import("@/components/PrivacyPolicy.vue"),
+  },
+  {
+    path: "/terms-and-conditions",
+    name: "TermsAndConditions",
+    component: () => import("@/components/TermsAndConditions.vue"),
+  },
+  {
+    path: "/data-deletion",
+    name: "DataDeletion",
+    component: () => import("@/components/DataDeletion.vue"),
+  },
 ];
 
 const router = createRouter({

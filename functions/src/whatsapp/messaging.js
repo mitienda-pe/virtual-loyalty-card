@@ -16,6 +16,24 @@ const WHATSAPP_API_URL = `https://graph.facebook.com/${WHATSAPP_API_VERSION}`;
  */
 async function sendWhatsAppMessage(phone, message, phoneNumberId, apiToken = null) {
   try {
+    // Validar que tengamos un número de teléfono
+    if (!phone) {
+      console.error("Error: Número de teléfono no proporcionado en sendWhatsAppMessage");
+      throw new Error("Número de teléfono requerido para enviar mensaje");
+    }
+    
+    // Validar que tengamos un mensaje
+    if (!message) {
+      console.error("Error: Mensaje no proporcionado en sendWhatsAppMessage");
+      throw new Error("Mensaje requerido para enviar mensaje");
+    }
+    
+    // Validar que tengamos un ID de número de teléfono de WhatsApp
+    if (!phoneNumberId) {
+      console.error("Error: ID de número de teléfono de WhatsApp no proporcionado en sendWhatsAppMessage");
+      throw new Error("ID de número de teléfono de WhatsApp requerido para enviar mensaje");
+    }
+    
     // Usar el token proporcionado o acceder a las variables de entorno
     const token = apiToken || process.env.WHATSAPP_API_TOKEN;
     
@@ -46,7 +64,7 @@ async function sendWhatsAppMessage(phone, message, phoneNumberId, apiToken = nul
     // Configurar los headers con el token de autenticación
     const headers = {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiToken}`
+      Authorization: `Bearer ${token}`
     };
     
     // Enviar la solicitud a la API de WhatsApp
@@ -113,13 +131,15 @@ async function downloadWhatsAppMedia(mediaId, apiToken = null) {
  */
 async function getMediaUrl(mediaId, apiToken = null) {
   try {
-    // Usar el token proporcionado o acceder a las variables de entorno
-    const token = apiToken || process.env.WHATSAPP_API_TOKEN;
+    // Obtener el token de autenticación de las variables de entorno
+    const token = process.env.WHATSAPP_API_TOKEN;
     
     if (!token) {
       console.error("Token de WhatsApp API no disponible en getMediaUrl");
       console.error("Variables de entorno disponibles:", Object.keys(process.env).filter(key => key.includes('WHATSAPP')));
-      throw new Error("Token de WhatsApp API no disponible");
+      console.warn("⚠️ Continuando sin token, pero la funcionalidad estará limitada");
+      // Retornar null en lugar de lanzar un error para permitir que el flujo continúe
+      return null;
     }
     
     // Construir la URL para obtener la información del archivo
@@ -141,7 +161,9 @@ async function getMediaUrl(mediaId, apiToken = null) {
     if (error.response) {
       console.error("Detalles del error:", error.response.data);
     }
-    throw error;
+    // Retornar null en lugar de lanzar un error
+    console.warn("⚠️ No se pudo obtener la URL del archivo, continuando con funcionalidad limitada");
+    return null;
   }
 }
 

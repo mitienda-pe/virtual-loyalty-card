@@ -1,12 +1,23 @@
 // functions/src/whatsapp/processMessages.js
-const { sendWhatsAppMessage, downloadWhatsAppMedia, getMediaUrl } = require('./messaging');
-const { processImageWithVision } = require('../services/visionService');
-const { extractRUCAndAmount } = require('../utils/textExtraction');
-const { normalizePhoneNumber } = require('../utils/phoneUtils');
-const firestoreService = require('../services/firestoreService');
+const {
+  sendWhatsAppMessage,
+  downloadWhatsAppMedia,
+  getMediaUrl,
+} = require("./messaging");
+const { processImageWithVision } = require("../services/visionService");
+const { extractRUCAndAmount } = require("../utils/textExtraction");
+const { normalizePhoneNumber } = require("../utils/phoneUtils");
+const firestoreService = require("../services/firestoreService");
+const queueService = require("../services/queueService");
 
 // Alias para funciones de Firestore para mayor legibilidad
-const { isDuplicateReceipt, findOrCreateCustomer, registerPurchase, getCustomerPointsInfo, findBusinessByRUC } = firestoreService;
+const {
+  isDuplicateReceipt,
+  findOrCreateCustomer,
+  registerPurchase,
+  getCustomerPointsInfo,
+  findBusinessByRUC,
+} = firestoreService;
 
 /**
  * Procesa un mensaje de imagen (comprobante de pago)
@@ -17,163 +28,298 @@ const { isDuplicateReceipt, findOrCreateCustomer, registerPurchase, getCustomerP
  * @param {object} metadata - Metadatos adicionales
  * @returns {Promise<void>}
  */
-async function processImageMessage(message, user, phoneNumberId, apiToken, metadata = {}) {
+async function processImageMessage(
+  message,
+  user,
+  phoneNumberId,
+  apiToken,
+  metadata = {}
+) {
   try {
     console.log("🖼️ Iniciando procesamiento de imagen");
     const imageId = message.image.id;
     console.log("🆔 ID de imagen:", imageId);
     
+    // Validar que tengamos la información del usuario
+    if (!user) {
+      console.error("❌ Error: Información de usuario no disponible");
+      throw new Error("Información de usuario no disponible");
+    }
+    
+    // Validar que tengamos el número de teléfono del usuario
+    if (!user.phone) {
+      console.error("❌ Error: Número de teléfono del usuario no disponible");
+      throw new Error("Número de teléfono del usuario no disponible");
+    }
+    
+    // Normalizar el número de teléfono para asegurar consistencia
+    user.phone = normalizePhoneNumber(user.phone);
+    console.log("📱 Número de teléfono del usuario:", user.phone);
+    
     // Ya enviamos un mensaje de confirmación en el webhook principal
-    
-    // Descargar la imagen
-    console.log("⬇️ Descargando imagen...");
-    const imageBuffer = await downloadWhatsAppMedia(imageId, apiToken);
-    
-    if (!imageBuffer) {
-      throw new Error("No se pudo descargar la imagen");
-    }
-    console.log("✅ Imagen descargada correctamente, tamaño:", imageBuffer.length, "bytes");
-    
-    // Procesar la imagen con Google Vision
-    console.log("🔍 Procesando imagen con Vision API...");
-    const extractedText = await processImageWithVision(imageBuffer);
-    
-    if (!extractedText) {
-      throw new Error("No se pudo extraer texto de la imagen");
-    }
-    
-    console.log("📝 Texto extraído:", extractedText.substring(0, 200) + "...");
-    
-    // Extraer información relevante del texto
-    console.log("🔎 Extrayendo datos del texto...");
-    const extractedData = extractRUCAndAmount(extractedText);
-    console.log("📊 Datos extraídos:", JSON.stringify(extractedData, null, 2));
-    
-    // Verificar si tenemos el RUC y monto necesarios
-    if (!extractedData.ruc || !extractedData.amount) {
-      console.log("❌ Información insuficiente en el comprobante");
-      await sendWhatsAppMessage(
-        user.phone,
-        "No pudimos identificar correctamente la información del comprobante. Por favor, asegúrate de que la imagen sea clara y contenga el RUC y monto total.",
-        phoneNumberId,
-        apiToken
-      );
-      return;
-    }
-    
-    // Buscar el negocio por RUC en la base de datos
-    console.log("🔍 Buscando negocio con RUC:", extractedData.ruc);
-    const business = await findBusinessByRUC(extractedData.ruc);
-    
-    if (!business) {
-      console.log("❌ Negocio no registrado con RUC:", extractedData.ruc);
-      await sendWhatsAppMessage(
-        user.phone,
-        `No encontramos un negocio registrado con el RUC ${extractedData.ruc}. Por favor, verifica que el comprobante sea de un negocio afiliado.`,
-        phoneNumberId,
-        apiToken
-      );
-      return;
-    }
-    
-    // Usar el slug del negocio desde la base de datos
-    extractedData.businessSlug = business.slug || extractedData.businessSlug;
-    extractedData.businessName = business.name || extractedData.businessName;
-    
-    // Verificar si el recibo ya ha sido registrado
-    console.log("🔄 Verificando si el comprobante es duplicado...");
-    const isDuplicate = await isDuplicateReceipt(
-      extractedData.businessSlug,
-      user.phone,
-      extractedData.amount,
-      null,
-      {
-        ruc: extractedData.ruc,
-        invoiceNumber: extractedData.invoiceNumber
+
+    // Establecer un tiempo límite para el procesamiento directo
+    const processingTimeout = setTimeout(() => {
+      throw new Error("Timeout: El procesamiento está tomando demasiado tiempo");
+    }, 25000); // 25 segundos, dejando margen para el timeout de la función HTTP (30s)
+
+    try {
+      // Descargar la imagen
+      console.log("⬇️ Descargando imagen...");
+      const imageBuffer = await downloadWhatsAppMedia(imageId, apiToken);
+
+      if (!imageBuffer) {
+        throw new Error("No se pudo descargar la imagen");
       }
-    );
-    
-    if (isDuplicate) {
-      console.log("⚠️ Comprobante duplicado detectado");
-      await sendWhatsAppMessage(
-        user.phone,
-        `Este comprobante ya ha sido registrado anteriormente. No se puede registrar el mismo comprobante más de una vez.`,
-        phoneNumberId,
-        apiToken
+      console.log(
+        "✅ Imagen descargada correctamente, tamaño:",
+        imageBuffer.length,
+        "bytes"
       );
-      return;
-    }
-    
-    // Registrar la compra
-    console.log("💾 Registrando compra en Firestore...");
-    const result = await registerPurchase(
-      extractedData.businessSlug,
-      user.phone,
-      extractedData.amount,
-      null, // imageUrl
-      {
-        ruc: extractedData.ruc,
-        invoiceNumber: extractedData.invoiceId,
-        businessName: extractedData.businessName,
-        address: extractedData.address,
-        customerName: user.name || "Cliente"
+
+      // Intentar procesar la imagen directamente (procesamiento rápido)
+      // Procesar la imagen con Google Vision
+      console.log("🔍 Procesando imagen con Vision API...");
+      let extractedText;
+      try {
+        extractedText = await processImageWithVision(imageBuffer);
+        
+        if (!extractedText) {
+          console.error("No se pudo extraer texto de la imagen (texto vacío)");
+          throw new Error("No se pudo extraer texto de la imagen");
+        }
+        
+        console.log("✅ Texto extraído correctamente de la imagen");
+      } catch (visionError) {
+        console.error("❌ Error en Vision API:", visionError.message);
+        console.error("Detalles del error:", visionError);
+        throw new Error(`Error procesando imagen con Vision API: ${visionError.message}`);
       }
-    );
-    
-    // Obtener información actualizada de puntos
-    console.log("🔢 Obteniendo información de puntos...");
-    const pointsInfo = await getCustomerPointsInfo(user.id, extractedData.businessSlug);
-    
-    // Normalizar el número de teléfono
-    const normalizedPhone = normalizePhoneNumber(user.phone);
-    
-    // Crear mensaje de confirmación
-    const confirmationMessage = `¡Gracias por tu compra en ${extractedData.businessName || business.name || extractedData.businessSlug}!
+
+      console.log("📝 Texto extraído:", extractedText.substring(0, 200) + "...");
+
+      // Extraer información relevante del texto
+      console.log("🔎 Extrayendo datos del texto...");
+      const extractedData = extractRUCAndAmount(extractedText);
+      console.log("📊 Datos extraídos:", JSON.stringify(extractedData, null, 2));
+
+      // Verificar si tenemos el RUC y monto necesarios
+      if (!extractedData.ruc || !extractedData.amount) {
+        console.log("❌ Información insuficiente en el comprobante");
+        await sendWhatsAppMessage(
+          user.phone,
+          "No pudimos identificar correctamente la información del comprobante. Por favor, asegúrate de que la imagen sea clara y contenga el RUC y monto total.",
+          phoneNumberId,
+          apiToken
+        );
+        clearTimeout(processingTimeout); // Limpiar el timeout
+        return;
+      }
+
+      // Buscar el negocio por RUC en la base de datos
+      console.log("🔍 Buscando negocio con RUC:", extractedData.ruc);
+      const business = await findBusinessByRUC(extractedData.ruc);
+
+      if (!business) {
+        console.log("❌ Negocio no registrado con RUC:", extractedData.ruc);
+        await sendWhatsAppMessage(
+          user.phone,
+          `No encontramos un negocio registrado con el RUC ${extractedData.ruc}. Por favor, verifica que el comprobante sea de un negocio afiliado.`,
+          phoneNumberId,
+          apiToken
+        );
+        clearTimeout(processingTimeout); // Limpiar el timeout
+        return;
+      }
+
+      // Usar el slug del negocio desde la base de datos
+      extractedData.businessSlug = business.slug || extractedData.businessSlug;
+      extractedData.businessName = business.name || extractedData.businessName;
+
+      // Verificar si el recibo ya ha sido registrado
+      console.log("🔄 Verificando si el comprobante es duplicado...");
+      const isDuplicate = await isDuplicateReceipt(
+        extractedData.businessSlug,
+        user.phone,
+        extractedData.amount,
+        null,
+        {
+          ruc: extractedData.ruc,
+          invoiceNumber: extractedData.invoiceNumber,
+        }
+      );
+
+      if (isDuplicate) {
+        console.log("⚠️ Comprobante duplicado detectado");
+        await sendWhatsAppMessage(
+          user.phone,
+          `Este comprobante ya ha sido registrado anteriormente. No se puede registrar el mismo comprobante más de una vez.`,
+          phoneNumberId,
+          apiToken
+        );
+        clearTimeout(processingTimeout); // Limpiar el timeout
+        return;
+      }
+
+      // Obtener URL de la imagen para guardarla
+      console.log("📸 Obteniendo URL de la imagen...");
+      let imageUrl = null;
+      try {
+        imageUrl = await getMediaUrl(imageId, apiToken);
+      } catch (mediaError) {
+        console.warn("⚠️ No se pudo obtener la URL de la imagen, continuando sin ella:", mediaError.message);
+        // Continuamos sin la URL de la imagen, no es crítico para el proceso
+      }
+
+      // Registrar la compra (incluso si no tenemos la URL de la imagen)
+      console.log("💾 Registrando compra en Firestore...");
+      const result = await registerPurchase(
+        extractedData.businessSlug,
+        user.phone,
+        extractedData.amount,
+        imageUrl || null, // Pasamos la URL si existe, o null si no pudimos obtenerla
+        {
+          ruc: extractedData.ruc,
+          invoiceNumber: extractedData.invoiceId,
+          businessName: extractedData.businessName,
+          address: extractedData.address,
+          customerName: user.name || "Cliente",
+          verified: true,
+          processedDirectly: true,
+          noImageUrl: imageUrl ? false : true // Indicar si no tenemos URL de imagen
+        }
+      );
+
+      // Obtener información actualizada de puntos
+      console.log("🔢 Obteniendo información de puntos...");
+      const pointsInfo = await getCustomerPointsInfo(
+        user.phone, // Usar el número de teléfono normalizado en lugar del ID
+        extractedData.businessSlug
+      );
+
+      // Normalizar el número de teléfono
+      const normalizedPhone = normalizePhoneNumber(user.phone);
+
+      // Crear mensaje de confirmación
+      const confirmationMessage = `¡Gracias por tu compra en ${
+        extractedData.businessName || business.name || extractedData.businessSlug
+      }!
 
 🧯 Comprobante registrado correctamente
 💰 Monto: S/ ${extractedData.amount}
-📍 Dirección: ${extractedData.address && extractedData.address !== 'CAJA' ? extractedData.address : 'No disponible'}
+📍 Dirección: ${
+        extractedData.address && extractedData.address !== "CAJA"
+          ? extractedData.address
+          : "No disponible"
+      }
 
-💳 Compra registrada exitosamente
-🛒 Total de compras: ${result.customer?.purchases || 1}
+🛍️ Compra registrada exitosamente
+🛒 Total de compras: ${result.customer?.purchaseCount || 1}
 
-Ver tu tarjeta de fidelidad: https://virtual-loyalty-card-e37c9.firebaseapp.com/${extractedData.businessSlug}/+${user.phone.replace('+', '')}`;
-    
-    // Enviar mensaje de confirmación
-    await sendWhatsAppMessage(
-      user.phone,
-      confirmationMessage,
-      phoneNumberId,
-      apiToken
-    );
-  } catch (error) {
-    console.error("❌ Error procesando imagen:", error.message);
-    console.error("Detalles del error:", error.stack);
-    
-    // Determinar un mensaje de error más específico basado en el tipo de error
-    let errorMessage = "Lo sentimos, hubo un error al procesar tu comprobante. Por favor, intenta nuevamente con una imagen más clara.";
-    
-    if (error.message.includes("Timeout")) {
-      console.log("⏱️ Se detectó un timeout en el procesamiento");
-      errorMessage = "El procesamiento está tomando más tiempo del esperado. Tu comprobante será procesado en segundo plano y te notificaremos cuando esté listo.";
-      
-      // En caso de timeout, programar un procesamiento asíncrono
-      // Esto permitirá que la función termine pero el procesamiento continúe en segundo plano
-      setTimeout(() => {
-        console.log("🔄 Continuando procesamiento en segundo plano");
-        // Aquí podríamos implementar una cola de procesamiento o un trigger para otra función
-      }, 0);
-    }
-    
-    try {
-      // Enviar mensaje de error al usuario
+Ver tu tarjeta de fidelidad: https://asiduo.club/${
+        extractedData.businessSlug
+      }/${normalizedPhone}`;
+
+      // Enviar mensaje de confirmación
       await sendWhatsAppMessage(
         user.phone,
-        errorMessage,
-        phoneNumberId
-      ).catch(sendError => {
-        console.error("Error enviando mensaje de error:", sendError.message);
-      });
+        confirmationMessage,
+        phoneNumberId,
+        apiToken
+      );
+      
+      // Limpiar el timeout ya que el procesamiento se completó correctamente
+      clearTimeout(processingTimeout);
+    } catch (processingError) {
+      // Limpiar el timeout ya que vamos a manejar el error
+      clearTimeout(processingTimeout);
+      
+      // Si ocurre un error durante el procesamiento directo, agregar a la cola
+      console.log("⚠️ Error en procesamiento directo, agregando a la cola:", processingError.message);
+      
+      // Descargar la imagen nuevamente si es necesario
+      let imageBuffer;
+      try {
+        imageBuffer = await downloadWhatsAppMedia(imageId, apiToken);
+      } catch (downloadError) {
+        console.error("❌ Error descargando imagen para la cola:", downloadError.message);
+        throw downloadError; // Propagar el error si no podemos descargar la imagen
+      }
+      
+      // Agregar a la cola de procesamiento
+      const queueItemData = {
+        imageBuffer,
+        user,
+        phoneNumberId,
+        apiToken,
+        imageId,
+        metadata: {
+          ...metadata,
+          addedToQueueAt: new Date().toISOString(),
+          originalError: processingError.message
+        }
+      };
+      
+      const queueId = await queueService.addToQueue(queueItemData);
+      console.log(`✅ Imagen agregada a la cola con ID: ${queueId}`);
+      
+      // Informar al usuario que el procesamiento continuará en segundo plano
+      await sendWhatsAppMessage(
+        user.phone,
+        "Tu comprobante está siendo procesado en segundo plano debido a su complejidad. Te notificaremos cuando esté listo (esto puede tomar unos minutos).",
+        phoneNumberId,
+        apiToken
+      );
+    }
+  } catch (error) {
+    console.error("❌ Error general procesando imagen:", error.message);
+    console.error("Detalles del error:", error.stack);
+
+    // Determinar un mensaje de error más específico basado en el tipo de error
+    let errorMessage =
+      "Lo sentimos, hubo un error al procesar tu comprobante. Por favor, intenta nuevamente con una imagen más clara.";
+
+    try {
+      // Intentar agregar a la cola si es un error general (fuera del bloque try interno)
+      if (message && message.image && message.image.id) {
+        console.log("⚠️ Intentando agregar a la cola después de error general");
+        
+        try {
+          // Descargar la imagen para la cola
+          const imageBuffer = await downloadWhatsAppMedia(message.image.id, apiToken);
+          
+          if (imageBuffer) {
+            // Agregar a la cola de procesamiento
+            const queueItemData = {
+              imageBuffer,
+              user,
+              phoneNumberId,
+              apiToken,
+              imageId: message.image.id,
+              metadata: {
+                ...metadata,
+                addedToQueueAt: new Date().toISOString(),
+                originalError: error.message,
+                fromGeneralErrorHandler: true
+              }
+            };
+            
+            const queueId = await queueService.addToQueue(queueItemData);
+            console.log(`✅ Imagen agregada a la cola desde el manejador de errores con ID: ${queueId}`);
+            
+            errorMessage = "Tu comprobante está siendo procesado en segundo plano. Te notificaremos cuando esté listo (esto puede tomar unos minutos).";
+          }
+        } catch (queueError) {
+          console.error("❌ Error al intentar agregar a la cola:", queueError.message);
+        }
+      }
+
+      // Enviar mensaje de error al usuario
+      await sendWhatsAppMessage(user.phone, errorMessage, phoneNumberId, apiToken).catch(
+        (sendError) => {
+          console.error("Error enviando mensaje de error:", sendError.message);
+        }
+      );
     } catch (sendError) {
       console.error("Error enviando mensaje de error:", sendError.message);
     }
@@ -189,12 +335,23 @@ Ver tu tarjeta de fidelidad: https://virtual-loyalty-card-e37c9.firebaseapp.com/
  * @param {object} metadata - Metadatos adicionales
  * @returns {Promise<void>}
  */
-async function processTextMessage(message, user, phoneNumberId, apiToken, metadata = {}) {
+async function processTextMessage(
+  message,
+  user,
+  phoneNumberId,
+  apiToken,
+  metadata = {}
+) {
   try {
     const text = message.text.body.trim().toLowerCase();
-    
+
     // Comandos disponibles
-    if (text === 'puntos' || text === 'points' || text.includes('punto') || text.includes('point')) {
+    if (
+      text === "puntos" ||
+      text === "points" ||
+      text.includes("punto") ||
+      text.includes("point")
+    ) {
       await sendPointsInfo(user, phoneNumberId, apiToken);
     } else {
       // Mensaje por defecto
@@ -230,7 +387,7 @@ async function sendPointsInfo(user, phoneNumberId, apiToken) {
   try {
     // Obtener información de puntos del usuario
     const pointsInfo = await getCustomerPointsInfo(user.phone);
-    
+
     if (!pointsInfo.success) {
       await sendWhatsAppMessage(
         user.phone,
@@ -240,26 +397,29 @@ async function sendPointsInfo(user, phoneNumberId, apiToken) {
       );
       return;
     }
-    
+
     // Construir mensaje con la información de puntos
     let message = `*Información de Puntos* 📊\n\n`;
     message += `*Cliente:* ${pointsInfo.customer.name}\n`;
     message += `*Compras totales:* ${pointsInfo.customer.totalPurchases}\n\n`;
-    
+
     if (pointsInfo.businesses.length === 0) {
-      message += "Aún no tienes puntos acumulados en ningún negocio. Envía una foto de tu comprobante de pago para comenzar a acumular puntos.";
+      message +=
+        "Aún no tienes puntos acumulados en ningún negocio. Envía una foto de tu comprobante de pago para comenzar a acumular puntos.";
     } else {
       message += "*Puntos por negocio:*\n";
-      
+
       for (const business of pointsInfo.businesses) {
         message += `\n*${business.name}*\n`;
         message += `Puntos: ${business.points}\n`;
         message += `Compras: ${business.purchases}\n`;
         message += `Total gastado: S/ ${business.totalSpent.toFixed(2)}\n`;
-        message += `Ver tarjeta: https://virtual-loyalty-card-e37c9.web.app/card/${business.slug}/${user.phone.replace('+', '')}\n`;
+        message += `Ver tarjeta: https://virtual-loyalty-card-e37c9.web.app/card/${
+          business.slug
+        }/${user.phone.replace("+", "")}\n`;
       }
     }
-    
+
     // Enviar mensaje con la información
     await sendWhatsAppMessage(user.phone, message, phoneNumberId, apiToken);
   } catch (error) {
@@ -280,13 +440,14 @@ async function sendPointsInfo(user, phoneNumberId, apiToken) {
  * @returns {Promise<void>}
  */
 async function sendHelpInfo(user, phoneNumberId) {
-  const helpMessage = `*Ayuda de Tarjeta de Fidelidad Virtual* 📱\n\n` +
+  const helpMessage =
+    `*Ayuda de Tarjeta de Fidelidad Virtual* 📱\n\n` +
     `Aquí tienes los comandos disponibles:\n\n` +
     `*puntos* - Consulta tus puntos acumulados en todos los negocios\n\n` +
     `*ayuda* - Muestra este mensaje de ayuda\n\n` +
     `Para registrar una compra, simplemente envía una foto clara del comprobante de pago (boleta o factura).\n\n` +
     `Por cada S/ 10 de consumo, recibirás 1 punto de fidelidad. ¡Acumula puntos y canjéalos por premios!`;
-  
+
   await sendWhatsAppMessage(user.phone, helpMessage, phoneNumberId);
 }
 
@@ -294,5 +455,5 @@ module.exports = {
   processImageMessage,
   processTextMessage,
   sendPointsInfo,
-  sendHelpInfo
+  sendHelpInfo,
 };
