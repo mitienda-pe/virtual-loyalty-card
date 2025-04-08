@@ -98,8 +98,8 @@ async function createImageProcessingTask(data, delayInSeconds = 0) {
     // Obtener el cliente
     const client = getTasksClient();
     
-    // URL del endpoint que procesará la tarea
-    const url = `https://${LOCATION}-${PROJECT_ID}.cloudfunctions.net/processImageTask`;
+    // URL del endpoint que procesará la tarea (funciones v2 tienen un formato de URL diferente)
+    const url = `https://processImageTask-${PROJECT_ID}.${LOCATION}.cloudfunctions.net`;
     
     // Crear la tarea
     const task = {

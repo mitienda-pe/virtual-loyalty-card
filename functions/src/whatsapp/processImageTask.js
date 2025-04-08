@@ -1,5 +1,6 @@
 // functions/src/whatsapp/processImageTask.js
 const functions = require('firebase-functions');
+const { onRequest } = require("firebase-functions/v2/https");
 const admin = require('firebase-admin');
 const { processImageWithVision } = require('../services/visionService');
 const { sendWhatsAppMessage } = require('./messaging');
@@ -16,16 +17,16 @@ const WHATSAPP_API_TOKEN = process.env.WHATSAPP_API_TOKEN;
  * Función Cloud para procesar imágenes desde Cloud Tasks
  * Esta función es llamada por Cloud Tasks y procesa una imagen de recibo
  */
-exports.processImageTask = functions
-  .runWith({
+exports.processImageTask = onRequest(
+  {
     timeoutSeconds: 540, // 9 minutos (máximo permitido)
     memory: '2GB',
     minInstances: 0,
     maxInstances: 10,
     // Especificar el runtime de Node.js 22
-    runtime: 'nodejs22'
-  })
-  .https.onRequest(async (req, res) => {
+    region: 'us-central1'
+  },
+  async (req, res) => {
     // Verificar método HTTP
     if (req.method !== 'POST') {
       res.status(405).send('Method Not Allowed');
