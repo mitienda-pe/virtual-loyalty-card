@@ -22,13 +22,12 @@ function getVisionClient() {
     } else {
       console.log('No se encontraron credenciales en GOOGLE_APPLICATION_CREDENTIALS, intentando usar credenciales de Firebase config');
       
-      // Intentar usar las credenciales de Firebase config
+      // En Cloud Functions v2, usamos variables de entorno directamente
+      // Las credenciales ya deberían estar disponibles a través de la autenticación por defecto
+      // o mediante la variable de entorno GOOGLE_CREDENTIALS
       try {
-        const functions = require('firebase-functions');
-        const googleCredentials = functions.config().google?.credentials;
-        
-        if (googleCredentials) {
-          console.log('Credenciales de Google encontradas en Firebase config');
+        if (process.env.GOOGLE_CREDENTIALS) {
+          console.log('Credenciales de Google encontradas en variable de entorno GOOGLE_CREDENTIALS');
           
           // Crear un archivo temporal con las credenciales
           const fs = require('fs');
@@ -36,18 +35,18 @@ function getVisionClient() {
           const path = require('path');
           const credentialsPath = path.join(os.tmpdir(), 'google-credentials.json');
           
-          // Convertir el objeto de credenciales a JSON y guardarlo en un archivo temporal
-          fs.writeFileSync(credentialsPath, JSON.stringify(googleCredentials));
+          // Guardar las credenciales en un archivo temporal
+          fs.writeFileSync(credentialsPath, process.env.GOOGLE_CREDENTIALS);
           
           // Establecer la variable de entorno para que la biblioteca de Vision API use estas credenciales
           process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
           
           console.log(`Credenciales guardadas en ${credentialsPath}`);
         } else {
-          console.log('No se encontraron credenciales de Google en Firebase config');
+          console.log('No se encontraron credenciales explícitas, usando autenticación por defecto de GCP');
         }
       } catch (configError) {
-        console.error('Error obteniendo credenciales de Firebase config:', configError);
+        console.error('Error configurando credenciales:', configError);
       }
     }
     

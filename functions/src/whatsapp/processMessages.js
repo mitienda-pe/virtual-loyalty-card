@@ -47,15 +47,42 @@ async function processImageMessage(
       throw new Error("Información de usuario no disponible");
     }
     
-    // Validar que tengamos el número de teléfono del usuario
-    if (!user.phone) {
-      console.error("❌ Error: Número de teléfono del usuario no disponible");
+    // Obtener el número de teléfono del usuario de múltiples fuentes posibles
+    let phoneNumber = null;
+    
+    // Intentar obtener el teléfono de diferentes propiedades
+    if (user.phone) {
+      phoneNumber = user.phone;
+      console.log(`Teléfono encontrado en user.phone: ${phoneNumber}`);
+    } else if (user.phoneNumber) {
+      phoneNumber = user.phoneNumber;
+      console.log(`Teléfono encontrado en user.phoneNumber: ${phoneNumber}`);
+    } else if (user.profile && user.profile.phoneNumber) {
+      phoneNumber = user.profile.phoneNumber;
+      console.log(`Teléfono encontrado en user.profile.phoneNumber: ${phoneNumber}`);
+    } else if (user.wa_id) {
+      phoneNumber = user.wa_id;
+      console.log(`Teléfono encontrado en user.wa_id: ${phoneNumber}`);
+    } else if (typeof user === 'string' && (user.startsWith('+') || /^\d+$/.test(user))) {
+      // Si el usuario es directamente una cadena que parece un número de teléfono
+      phoneNumber = user;
+      console.log(`Usuario es directamente un número de teléfono: ${phoneNumber}`);
+    }
+    
+    // Validar que tengamos un número de teléfono
+    if (!phoneNumber) {
+      console.error("❌ Error: Número de teléfono del usuario no disponible en ninguna propiedad");
+      console.log("Contenido del objeto user:", JSON.stringify(user, null, 2));
       throw new Error("Número de teléfono del usuario no disponible");
     }
     
-    // Normalizar el número de teléfono para asegurar consistencia
-    user.phone = normalizePhoneNumber(user.phone);
-    console.log("📱 Número de teléfono del usuario:", user.phone);
+    // Normalizar el número de teléfono y asegurarnos de que esté disponible en todas las propiedades necesarias
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
+    user.phone = normalizedPhone;
+    user.phoneNumber = normalizedPhone; // Agregar propiedad alternativa
+    if (!user.profile) user.profile = {};
+    user.profile.phoneNumber = normalizedPhone; // Agregar al perfil también
+    console.log(`📱 Número de teléfono normalizado: ${normalizedPhone}`);
     
     // Ya enviamos un mensaje de confirmación en el webhook principal
 

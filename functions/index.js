@@ -29,9 +29,6 @@ const { processImageTask } = require("./src/whatsapp/processImageTask");
 // Pasar la instancia de Firestore al servicio
 firestoreService.setFirestoreDb(db);
 
-// Migrate RUC data to ruc_business_map
-firestoreService.migrateRucBusinessMap();
-
 // Alias para funciones de Firestore para mayor legibilidad
 const { findOrCreateCustomer } = firestoreService;
 
@@ -173,14 +170,35 @@ whatsappApiApp.post("/", verifySignatureMiddleware, async (req, res) => {
                 );
 
                 // Procesar la imagen (no esperamos a que termine)
-                processImageMessage(
-                  message,
-                  user,
-                  WHATSAPP_PHONE_NUMBER_ID,
-                  WHATSAPP_API_TOKEN
-                ).catch((err) =>
-                  console.error("Error procesando imagen:", err)
-                );
+                try {
+                  // Asegurarse de que el usuario tenga la propiedad phone
+                  if (!user.phone && phone) {
+                    user.phone = phone;
+                    console.log(`Asignando número de teléfono al objeto usuario: ${phone}`);
+                  }
+
+                  // Procesar la imagen (no esperamos a que termine)
+                  processImageMessage(
+                    message,
+                    user,
+                    WHATSAPP_PHONE_NUMBER_ID,
+                    WHATSAPP_API_TOKEN
+                  ).catch((err) => {
+                    console.error("Error procesando imagen:", err);
+                    
+                    // Intentar enviar un mensaje de error al usuario
+                    if (phone) {
+                      sendWhatsAppMessage(
+                        phone,
+                        "Hubo un problema al procesar tu imagen. Por favor, intenta nuevamente con una foto más clara del comprobante.",
+                        WHATSAPP_PHONE_NUMBER_ID,
+                        WHATSAPP_API_TOKEN
+                      ).catch(msgErr => console.error("Error enviando mensaje de error:", msgErr));
+                    }
+                  });
+                } catch (error) {
+                  console.error("Error general en el manejo de imágenes:", error);
+                }
               } else if (message.type === "text") {
                 // Si es un texto, procesamos comandos o consultas
                 processTextMessage(

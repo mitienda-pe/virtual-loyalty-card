@@ -126,30 +126,80 @@ exports.processImageTask = onRequest(
         throw new Error(`No se encontró un negocio registrado con el RUC: ${receiptData.ruc}`);
       }
       
-      const purchaseResult = await registerPurchase(
-        businessSlug,
-        user.phone,
-        receiptData.amount,
-        null, // URL de imagen (se actualizará después)
-        {
-          ruc: receiptData.ruc,
-          invoiceNumber: receiptData.invoiceId,
-          businessName: receiptData.businessName,
-          address: receiptData.address,
-          customerName: user.name || "Cliente",
-          verified: true,
-          processedFromCloudTasks: true,
-          taskId: taskId || req.body.taskId
+      console.log(`Intentando registrar compra con: businessSlug=${businessSlug}, phone=${user.phone}, amount=${receiptData.amount}`);
+      console.log(`Datos adicionales: RUC=${receiptData.ruc}, invoiceNumber=${receiptData.invoiceId}, businessName=${receiptData.businessName}`);
+      
+      let purchaseResult;
+      
+      try {
+        // Normalizar el número de teléfono para asegurar consistencia
+        const normalizedPhone = user.phone.startsWith('+') ? user.phone : `+${user.phone}`;
+        console.log(`Número de teléfono normalizado para registro: ${normalizedPhone}`);
+        
+        purchaseResult = await registerPurchase(
+          businessSlug,
+          normalizedPhone, // Usar el número normalizado
+          receiptData.amount,
+          null, // URL de imagen (se actualizará después)
+          {
+            ruc: receiptData.ruc,
+            invoiceNumber: receiptData.invoiceId,
+            businessName: receiptData.businessName,
+            address: receiptData.address,
+            customerName: user.name || "Cliente",
+            verified: true,
+            processedFromCloudTasks: true,
+            taskId: taskId || req.body.taskId
+          }
+        );
+        
+        if (!purchaseResult || !purchaseResult.success) {
+          throw new Error(`Fallo al registrar compra: ${purchaseResult ? purchaseResult.error : 'Resultado nulo'}`);
         }
-      );
+        
+        console.log(`✅ Compra registrada exitosamente: ${JSON.stringify(purchaseResult)}`);
+      } catch (registerError) {
+        console.error(`❌ Error registrando compra: ${registerError.message}`);
+        console.error(registerError.stack);
+        
+        // Enviar mensaje de error al usuario
+        await sendWhatsAppMessage(
+          user.phone,
+          `Hubo un problema al registrar tu compra: ${registerError.message}. Por favor, intenta nuevamente.`,
+          phoneNumberId,
+          apiToken
+        );
+        
+        throw registerError;
+      }
+      
+      // Verificar que la compra se haya registrado correctamente antes de enviar confirmación
+      console.log("Verificando registro de compra en Firestore...");
+      const customerInfo = await getCustomerInfo(user.phone, businessSlug);
+      
+      if (!customerInfo || !customerInfo.purchaseCount) {
+        console.error("No se encontró información del cliente después de registrar la compra");
+        throw new Error("La compra no se registró correctamente en Firestore");
+      }
+      
+      console.log(`Cliente verificado: ${JSON.stringify(customerInfo)}`);
       
       // Enviar mensaje de confirmación al usuario
       console.log("📱 Enviando confirmación por WhatsApp...");
       let confirmationMessage = `¡Gracias por tu compra en ${business?.name || receiptData.businessName || 'el comercio'}!\n\n`;
-      confirmationMessage += `Monto: S/ ${receiptData.amount}\n`;
-      confirmationMessage += `Fecha: ${new Date().toLocaleDateString('es-PE')}\n\n`;
-      confirmationMessage += `Puedes ver tu tarjeta de fidelización aquí:\n`;
-      confirmationMessage += `https://virtual-loyalty-card-e37c9.firebaseapp.com/${businessSlug}/${userPhoneNormalized}`;
+      confirmationMessage += `🧯 Comprobante registrado correctamente\n`;
+      confirmationMessage += `💰 Monto: S/ ${receiptData.amount}\n`;
+      if (receiptData.address) {
+        confirmationMessage += `📍 Dirección: ${receiptData.address}\n`;
+      }
+      confirmationMessage += "\n";
+      
+      // Agregar información de compras
+      confirmationMessage += `🛍️ Compra registrada exitosamente\n`;
+      confirmationMessage += `🛒 Total de compras: ${customerInfo.purchaseCount}\n\n`;
+      
+      // Agregar enlace a la tarjeta de fidelidad
+      confirmationMessage += `Ver tu tarjeta de fidelidad: https://asiduo.club/${businessSlug}/${userPhoneNormalized}`;
       
       await sendWhatsAppMessage(
         userPhoneNormalized,

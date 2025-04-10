@@ -50,18 +50,54 @@ async function isDuplicateReceipt(businessSlug, phoneNumber, amount, imageUrl, i
     const oneDayAgo = new Date();
     oneDayAgo.setDate(oneDayAgo.getDate() - 1);
     
-    const purchasesRef = db.collection('business_purchases')
-      .doc(businessSlug)
-      .collection('purchases')
-      .where("phoneNumber", "==", normalizedPhone)
-      .where("amount", "==", parseFloat(amount))
-      .where("date", ">", oneDayAgo)
-      .limit(1);
-    
-    const purchasesSnapshot = await purchasesRef.get();
-    if (!purchasesSnapshot.empty) {
-      console.log(`Compra duplicada detectada para ${businessSlug} - ${normalizedPhone} - ${amount}`);
-      return true;
+    try {
+      // Intentar usar la consulta que requiere un índice compuesto
+      const purchasesRef = db.collection('business_purchases')
+        .doc(businessSlug)
+        .collection('purchases')
+        .where("phoneNumber", "==", normalizedPhone)
+        .where("amount", "==", parseFloat(amount))
+        .where("date", ">", oneDayAgo)
+        .limit(1);
+      
+      const purchasesSnapshot = await purchasesRef.get();
+      if (!purchasesSnapshot.empty) {
+        console.log(`Compra duplicada detectada para ${businessSlug} - ${normalizedPhone} - ${amount}`);
+        return true;
+      }
+    } catch (indexError) {
+      // Si hay un error de índice faltante, usar una estrategia alternativa
+      if (indexError.message && indexError.message.includes('FAILED_PRECONDITION') && indexError.message.includes('index')) {
+        console.log('Índice compuesto no disponible, usando verificación alternativa');
+        
+        // Estrategia alternativa: obtener todas las compras del usuario y filtrar manualmente
+        try {
+          const simpleRef = db.collection('business_purchases')
+            .doc(businessSlug)
+            .collection('purchases')
+            .where("phoneNumber", "==", normalizedPhone)
+            .limit(20); // Limitar a las últimas 20 compras para evitar problemas de rendimiento
+          
+          const simpleSnapshot = await simpleRef.get();
+          
+          // Verificar manualmente si hay alguna compra con monto similar en las últimas 24 horas
+          const duplicateFound = simpleSnapshot.docs.some(doc => {
+            const data = doc.data();
+            const date = data.date && data.date.toDate ? data.date.toDate() : null;
+            return data.amount === parseFloat(amount) && date && date > oneDayAgo;
+          });
+          
+          if (duplicateFound) {
+            console.log(`Compra duplicada detectada (verificación alternativa) para ${businessSlug} - ${normalizedPhone} - ${amount}`);
+            return true;
+          }
+        } catch (alternativeError) {
+          console.error('Error en verificación alternativa de duplicados:', alternativeError);
+        }
+      } else {
+        // Si es otro tipo de error, registrarlo
+        console.error('Error en verificación de duplicados (índice):', indexError);
+      }
     }
     
     // Si llegamos aquí, no es un duplicado
@@ -114,6 +150,9 @@ async function findOrCreateCustomer(phoneNumber, name = null) {
         });
       }
       
+      // Asegurarse de que el objeto tenga la propiedad phone para compatibilidad
+      customerData.phone = normalizedPhone;
+      customerData.phoneNumber = normalizedPhone;
       return customerData;
     } else {
       // Nuevo cliente
@@ -128,6 +167,9 @@ async function findOrCreateCustomer(phoneNumber, name = null) {
       };
       
       await customerRef.set(newCustomer);
+      // Asegurarse de que el objeto tenga la propiedad phone para compatibilidad
+      newCustomer.phone = normalizedPhone;
+      newCustomer.phoneNumber = normalizedPhone;
       return newCustomer;
     }
   } catch (error) {
@@ -146,6 +188,9 @@ async function findOrCreateCustomer(phoneNumber, name = null) {
  * @returns {Promise<object>} - Resultado del registro
  */
 async function registerPurchase(businessSlug, phoneNumber, amount, imageUrl, additionalData = {}) {
+  console.log(`💾 INICIO registerPurchase: businessSlug=${businessSlug}, phoneNumber=${phoneNumber}, amount=${amount}`);
+  console.log(`Datos adicionales: ${JSON.stringify(additionalData)}`);
+  
   try {
     if (!phoneNumber) {
       console.error('Error: Número de teléfono no proporcionado en registerPurchase');
@@ -155,6 +200,13 @@ async function registerPurchase(businessSlug, phoneNumber, amount, imageUrl, add
     if (!businessSlug) {
       console.error('Error: Business slug no proporcionado en registerPurchase');
       throw new Error('Business slug requerido para registrar compra');
+    }
+    
+    // Validar que el monto sea un número válido
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount)) {
+      console.error(`Error: Monto inválido en registerPurchase: ${amount}`);
+      throw new Error(`Monto inválido para registrar compra: ${amount}`);
     }
     
     console.log(`Registrando compra para ${phoneNumber} en ${businessSlug} por ${amount}`);
@@ -198,9 +250,11 @@ async function registerPurchase(businessSlug, phoneNumber, amount, imageUrl, add
     }
     
     if (!customerData.businesses[businessSlug]) {
+      // Usamos Date() en lugar de serverTimestamp() para evitar problemas con arrays
+      const currentDate = new Date();
       customerData.businesses[businessSlug] = {
-        firstVisit: admin.firestore.FieldValue.serverTimestamp(),
-        lastVisit: admin.firestore.FieldValue.serverTimestamp(),
+        firstVisit: currentDate,
+        lastVisit: currentDate,
         purchaseCount: 0,
         totalSpent: 0,
         purchases: []
@@ -213,9 +267,11 @@ async function registerPurchase(businessSlug, phoneNumber, amount, imageUrl, add
     }
     
     // Crear registro de compra con timestamp
+    // Nota: No podemos usar serverTimestamp() dentro de arrays en Firestore
+    // así que usamos una fecha JavaScript normal
     const purchaseRecord = {
       amount: parseFloat(amount),
-      date: admin.firestore.FieldValue.serverTimestamp(),
+      date: new Date(), // Usar Date() en lugar de serverTimestamp() para arrays
       receiptUrl: imageUrl,
       verified: true,
       invoiceNumber: additionalData.invoiceNumber || null,
@@ -224,12 +280,16 @@ async function registerPurchase(businessSlug, phoneNumber, amount, imageUrl, add
       businessName: additionalData.businessName || null
     };
     
+    console.log(`Registro de compra creado con fecha: ${purchaseRecord.date}`);
+    
     // Añadir la compra al array de purchases
     customerData.businesses[businessSlug].purchases.push(purchaseRecord);
     
     // Actualizar datos del cliente
     customerData.businesses[businessSlug].purchaseCount = (customerData.businesses[businessSlug].purchaseCount || 0) + 1;
-    customerData.businesses[businessSlug].lastVisit = admin.firestore.FieldValue.serverTimestamp();
+    // Usamos Date() para lastVisit en lugar de serverTimestamp() para evitar problemas
+    // cuando se actualiza el documento que contiene el array de purchases
+    customerData.businesses[businessSlug].lastVisit = new Date();
     
     // Calcular total gastado
     const previousTotal = customerData.businesses[businessSlug].totalSpent || 0;
@@ -239,10 +299,14 @@ async function registerPurchase(businessSlug, phoneNumber, amount, imageUrl, add
     console.log(`Total gastado calculado para ${phoneNumber} en ${businessSlug}: ${customerData.businesses[businessSlug].totalSpent}`);
     
     // Actualizar o crear documento del cliente
+    console.log(`Actualizando documento del cliente: ${normalizedPhone}`);
+    console.log(`Datos a guardar: ${JSON.stringify(customerData.businesses[businessSlug])}`);
     await customerRef.set(customerData, { merge: true });
+    console.log(`✅ Documento del cliente actualizado exitosamente: ${normalizedPhone}`);
     
     // 3. Registrar la factura en la colección 'invoices'
     const invoiceId = `${businessSlug}_${normalizedPhone}_${Date.now()}`;
+    console.log(`Registrando factura con ID: ${invoiceId}`);
     const invoiceRef = db.collection('invoices').doc(invoiceId);
     await invoiceRef.set({
       businessSlug: businessSlug,
@@ -309,13 +373,22 @@ async function registerPurchase(businessSlug, phoneNumber, amount, imageUrl, add
         id: purchaseId,
         phoneNumber: normalizedPhone,
         customerName: customerName,
-        date: admin.firestore.FieldValue.serverTimestamp(),
+        date: admin.firestore.FieldValue.serverTimestamp(), // Aquí sí podemos usar serverTimestamp() porque no está dentro de un array
         amount: parseFloat(amount),
         // Solo incluir receiptUrl si existe
         ...(imageUrl ? { receiptUrl: imageUrl } : { receiptUrl: null }),
         verified: additionalData.verified || false,
-        ...additionalData
+        invoiceNumber: additionalData.invoiceNumber || null,
+        ruc: additionalData.ruc || null,
+        address: additionalData.address || null,
+        businessName: additionalData.businessName || null,
+        // Incluir el resto de datos adicionales, excluyendo los que ya hemos añadido explícitamente
+        ...Object.fromEntries(Object.entries(additionalData).filter(([key]) => 
+          !['invoiceNumber', 'ruc', 'address', 'businessName', 'verified'].includes(key)
+        ))
       };
+      
+      console.log(`Datos de compra para business_purchases: ${JSON.stringify({...purchaseData, date: 'serverTimestamp'})}`);
       
       console.log("Registrando en business_purchases:", `${businessSlug}/purchases/${purchaseId}`);
       await businessPurchasesRef.set(purchaseData);
@@ -330,7 +403,7 @@ async function registerPurchase(businessSlug, phoneNumber, amount, imageUrl, add
       // Continuamos aunque falle este registro secundario
     }
     
-    return {
+    const result = {
       success: true,
       customer: {
         phone: normalizedPhone,
@@ -344,9 +417,13 @@ async function registerPurchase(businessSlug, phoneNumber, amount, imageUrl, add
       },
       purchase: {
         amount: parseFloat(amount),
-        receiptUrl: imageUrl
+        date: new Date(),
+        invoiceId: invoiceId
       }
     };
+    
+    console.log(`💾 FIN registerPurchase: Compra registrada exitosamente para ${normalizedPhone} en ${businessSlug}`);
+    return result;
   } catch (error) {
     console.error("Error registrando compra:", error);
     return { success: false, error: error.message };
@@ -522,50 +599,11 @@ async function findBusinessByRUC(ruc) {
   }
 }
 
-/**
- * Migrates existing business data to the ruc_business_map collection.
- * This function reads all businesses from the 'businesses' collection
- * and creates a mapping in the 'ruc_business_map' collection for each RUC.
- */
-async function migrateRucBusinessMap() {
-  try {
-    const businessesRef = db.collection('businesses');
-    const businessesSnapshot = await businessesRef.get();
-
-    if (businessesSnapshot.empty) {
-      console.log('No businesses found to migrate.');
-      return;
-    }
-
-    const batch = db.batch();
-
-    businessesSnapshot.forEach(doc => {
-      const businessData = doc.data();
-      const ruc = businessData.ruc;
-      const businessSlug = doc.id; // Use the document ID as the business slug
-
-      if (ruc) {
-        const rucMapRef = db.collection('ruc_business_map').doc(ruc);
-        batch.set(rucMapRef, { businessSlug: businessSlug });
-      } else {
-        console.warn(`Business ${businessSlug} has no RUC. Skipping.`);
-      }
-    });
-
-    await batch.commit();
-    console.log('RUC to business slug mapping migration completed.');
-
-  } catch (error) {
-    console.error('Error migrating RUC to business slug mapping:', error);
-  }
-}
-
 module.exports = {
   setFirestoreDb,
   isDuplicateReceipt,
   findOrCreateCustomer,
   registerPurchase,
   getCustomerPointsInfo,
-  findBusinessByRUC,
-  migrateRucBusinessMap
+  findBusinessByRUC
 };
