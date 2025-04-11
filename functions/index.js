@@ -25,6 +25,7 @@ const firestoreService = require("./src/services/firestoreService");
 const { createPref } = require("./src/mercadopago");
 const { processQueueItems } = require("./src/whatsapp/queueProcessor");
 const { processImageTask } = require("./src/whatsapp/processImageTask");
+const { cleanupImagesScheduled } = require("./src/scheduled/cleanupImages");
 
 // Pasar la instancia de Firestore al servicio
 firestoreService.setFirestoreDb(db);
@@ -46,6 +47,9 @@ const WHATSAPP_APP_SECRET =
 
 // Exportar la función de procesamiento de imágenes con Cloud Tasks
 exports.processImageTask = processImageTask;
+
+// Exportar la función programada para limpiar imágenes antiguas
+exports.cleanupImagesScheduled = cleanupImagesScheduled;
 
 // Función simple para probar que la configuración funciona
 exports.helloWorld = onRequest(

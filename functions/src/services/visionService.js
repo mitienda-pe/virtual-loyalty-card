@@ -14,45 +14,13 @@ function getVisionClient() {
   try {
     console.log('Inicializando cliente de Vision API...');
     
-    // Intentar obtener las credenciales de la configuración de Firebase Functions
-    const credentials = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    // En Cloud Functions v2, usamos la autenticación por defecto de GCP
+    // que ya debería estar disponible en el entorno de ejecución
+    console.log('Usando autenticación por defecto de GCP para Vision API');
     
-    if (credentials) {
-      console.log('Usando credenciales explícitas de GOOGLE_APPLICATION_CREDENTIALS');
-    } else {
-      console.log('No se encontraron credenciales en GOOGLE_APPLICATION_CREDENTIALS, intentando usar credenciales de Firebase config');
-      
-      // En Cloud Functions v2, usamos variables de entorno directamente
-      // Las credenciales ya deberían estar disponibles a través de la autenticación por defecto
-      // o mediante la variable de entorno GOOGLE_CREDENTIALS
-      try {
-        if (process.env.GOOGLE_CREDENTIALS) {
-          console.log('Credenciales de Google encontradas en variable de entorno GOOGLE_CREDENTIALS');
-          
-          // Crear un archivo temporal con las credenciales
-          const fs = require('fs');
-          const os = require('os');
-          const path = require('path');
-          const credentialsPath = path.join(os.tmpdir(), 'google-credentials.json');
-          
-          // Guardar las credenciales en un archivo temporal
-          fs.writeFileSync(credentialsPath, process.env.GOOGLE_CREDENTIALS);
-          
-          // Establecer la variable de entorno para que la biblioteca de Vision API use estas credenciales
-          process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
-          
-          console.log(`Credenciales guardadas en ${credentialsPath}`);
-        } else {
-          console.log('No se encontraron credenciales explícitas, usando autenticación por defecto de GCP');
-        }
-      } catch (configError) {
-        console.error('Error configurando credenciales:', configError);
-      }
-    }
-    
-    // Crear el cliente de Vision API con fallback a REST para evitar problemas con gRPC
+    // Crear el cliente de Vision API con configuración explícita
     visionClient = new ImageAnnotatorClient({
-      fallback: 'rest'
+      fallback: 'rest'  // Usar REST en lugar de gRPC para mayor compatibilidad
     });
     
     console.log('Cliente de Vision API inicializado correctamente');
@@ -82,6 +50,18 @@ async function processImageWithVision(imageBuffer) {
     // Obtener el cliente de Vision API
     const client = getVisionClient();
     
+    // Crear la solicitud con el formato correcto
+    const request = {
+      image: {
+        content: imageBuffer.toString('base64')
+      },
+      features: [
+        {
+          type: 'TEXT_DETECTION'
+        }
+      ]
+    };
+    
     console.log("Enviando solicitud a Vision API...");
     
     // Intentar con reintentos en caso de error
@@ -91,8 +71,9 @@ async function processImageWithVision(imageBuffer) {
     
     while (retries > 0) {
       try {
-        // Realizar el reconocimiento de texto en la imagen
-        [result] = await client.textDetection(imageBuffer);
+        // Usar el método documentTextDetection que es más adecuado para recibos
+        // y proporciona un formato de respuesta más estructurado
+        [result] = await client.documentTextDetection(imageBuffer);
         console.log("Respuesta recibida de Vision API");
         break; // Si llegamos aquí, la llamada fue exitosa
       } catch (err) {
@@ -111,15 +92,22 @@ async function processImageWithVision(imageBuffer) {
       throw error || new Error('No se pudo obtener respuesta de Vision API después de múltiples intentos');
     }
     
-    const detections = result.textAnnotations;
+    // Extraer el texto completo del documento
+    let extractedText = '';
     
-    if (!detections || detections.length === 0) {
+    // Verificar si tenemos anotaciones de texto completo
+    if (result.fullTextAnnotation) {
+      extractedText = result.fullTextAnnotation.text;
+    } 
+    // Fallback a textAnnotations si fullTextAnnotation no está disponible
+    else if (result.textAnnotations && result.textAnnotations.length > 0) {
+      extractedText = result.textAnnotations[0].description;
+    }
+    
+    if (!extractedText) {
       console.log("No se detectó texto en la imagen");
       return "";
     }
-    
-    // El primer elemento contiene todo el texto detectado
-    const extractedText = detections[0].description;
     
     console.log("Texto extraído exitosamente");
     return extractedText;

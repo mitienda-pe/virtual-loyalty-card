@@ -10,6 +10,7 @@ const { normalizePhoneNumber } = require("../utils/phoneUtils");
 const firestoreService = require("../services/firestoreService");
 const queueService = require("../services/queueService");
 const { createImageProcessingTask } = require('../services/cloudTasksService');
+const { storeReceiptImage } = require('../services/storageService');
 
 // Alias para funciones de Firestore para mayor legibilidad
 const {
@@ -123,9 +124,7 @@ async function processImageMessage(
         console.error("Detalles del error:", visionError);
         throw new Error(`Error procesando imagen con Vision API: ${visionError.message}`);
       }
-
-      console.log("📝 Texto extraído:", extractedText.substring(0, 200) + "...");
-
+      
       // Extraer información relevante del texto
       console.log("🔎 Extrayendo datos del texto...");
       const extractedData = extractRUCAndAmount(extractedText);
@@ -134,6 +133,21 @@ async function processImageMessage(
       // Verificar si tenemos el RUC y monto necesarios
       if (!extractedData.ruc || !extractedData.amount) {
         console.log("❌ Información insuficiente en el comprobante");
+        
+        // Almacenar la imagen para análisis posterior, incluso si falta información
+        try {
+          await storeReceiptImage(
+            imageBuffer,
+            "unidentified", // No tenemos businessSlug aún
+            user.phone,
+            `unprocessed_${Date.now()}`
+          );
+          console.log("📸 Imagen almacenada para análisis posterior");
+        } catch (storageError) {
+          console.error("⚠️ Error almacenando imagen no procesada:", storageError.message);
+          // No interrumpimos el flujo por un error de almacenamiento
+        }
+        
         await sendWhatsAppMessage(
           user.phone,
           "No pudimos identificar correctamente la información del comprobante. Por favor, asegúrate de que la imagen sea clara y contenga el RUC y monto total.",
@@ -144,15 +158,32 @@ async function processImageMessage(
         return;
       }
 
+      console.log("📝 Texto extraído:", extractedText.substring(0, 200) + "...");
+
       // Buscar el negocio por RUC en la base de datos
       console.log("🔍 Buscando negocio con RUC:", extractedData.ruc);
       const business = await findBusinessByRUC(extractedData.ruc);
 
       if (!business) {
         console.log("❌ Negocio no registrado con RUC:", extractedData.ruc);
+        
+        // Almacenar la imagen para análisis posterior, incluso si el negocio no está registrado
+        try {
+          await storeReceiptImage(
+            imageBuffer,
+            "unregistered_business",
+            user.phone,
+            `ruc_${extractedData.ruc}_${Date.now()}`
+          );
+          console.log("📸 Imagen almacenada para análisis posterior (negocio no registrado)");
+        } catch (storageError) {
+          console.error("⚠️ Error almacenando imagen de negocio no registrado:", storageError.message);
+          // No interrumpimos el flujo por un error de almacenamiento
+        }
+        
         await sendWhatsAppMessage(
           user.phone,
-          `No encontramos un negocio registrado con el RUC ${extractedData.ruc}. Por favor, verifica que el comprobante sea de un negocio afiliado.`,
+          `Lo sentimos, el negocio con RUC ${extractedData.ruc} no está registrado en nuestro sistema.`,
           phoneNumberId,
           apiToken
         );
@@ -163,6 +194,28 @@ async function processImageMessage(
       // Usar el slug del negocio desde la base de datos
       extractedData.businessSlug = business.slug || extractedData.businessSlug;
       extractedData.businessName = business.name || extractedData.businessName;
+      
+      // Almacenar la imagen en Firebase Storage
+      let receiptImageUrl = null;
+      try {
+        console.log("📸 Almacenando imagen del recibo en Firebase Storage...");
+        const storageResult = await storeReceiptImage(
+          imageBuffer,
+          extractedData.businessSlug,
+          user.phone,
+          `ruc_${extractedData.ruc}_${Date.now()}`
+        );
+        
+        if (storageResult) {
+          receiptImageUrl = storageResult.url;
+          console.log("✅ Imagen almacenada correctamente:", receiptImageUrl);
+        } else {
+          console.warn("⚠️ No se pudo almacenar la imagen, continuando sin URL de imagen");
+        }
+      } catch (storageError) {
+        console.error("⚠️ Error almacenando imagen:", storageError.message);
+        // No interrumpimos el flujo por un error de almacenamiento
+      }
 
       // Verificar si el recibo ya ha sido registrado
       console.log("🔄 Verificando si el comprobante es duplicado...");
@@ -170,7 +223,7 @@ async function processImageMessage(
         extractedData.businessSlug,
         user.phone,
         extractedData.amount,
-        null,
+        receiptImageUrl, // Ahora pasamos la URL de la imagen
         {
           ruc: extractedData.ruc,
           invoiceNumber: extractedData.invoiceNumber,
@@ -181,7 +234,7 @@ async function processImageMessage(
         console.log("⚠️ Comprobante duplicado detectado");
         await sendWhatsAppMessage(
           user.phone,
-          `Este comprobante ya ha sido registrado anteriormente. No se puede registrar el mismo comprobante más de una vez.`,
+          "Este comprobante ya ha sido registrado anteriormente.",
           phoneNumberId,
           apiToken
         );
@@ -199,13 +252,13 @@ async function processImageMessage(
         // Continuamos sin la URL de la imagen, no es crítico para el proceso
       }
 
-      // Registrar la compra (incluso si no tenemos la URL de la imagen)
+      // Registrar la compra con URL de imagen si está disponible
       console.log("💾 Registrando compra en Firestore...");
       const result = await registerPurchase(
         extractedData.businessSlug,
         user.phone,
         extractedData.amount,
-        imageUrl || null, // Pasamos la URL si existe, o null si no pudimos obtenerla
+        receiptImageUrl, // Ahora pasamos la URL de la imagen almacenada
         {
           ruc: extractedData.ruc,
           invoiceNumber: extractedData.invoiceId,
@@ -213,8 +266,9 @@ async function processImageMessage(
           address: extractedData.address,
           customerName: user.name || "Cliente",
           verified: true,
-          processedDirectly: true,
-          noImageUrl: imageUrl ? false : true // Indicar si no tenemos URL de imagen
+          processedFromQueue: false,
+          queueId: null,
+          hasStoredImage: !!receiptImageUrl // Indicador de si tenemos imagen almacenada
         }
       );
 

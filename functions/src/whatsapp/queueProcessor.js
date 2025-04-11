@@ -6,6 +6,7 @@ const { extractRUCAndAmount } = require("../utils/textExtraction");
 const { normalizePhoneNumber } = require("../utils/phoneUtils");
 const { sendWhatsAppMessage } = require("./messaging");
 const firestoreService = require("../services/firestoreService");
+const { storeReceiptImage } = require("../services/storageService");
 
 // Alias para funciones de Firestore para mayor legibilidad
 const {
@@ -229,6 +230,21 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
     
     if (!extractedText) {
       console.error("No se pudo extraer texto de la imagen (texto vacío)");
+      
+      // Almacenar la imagen para análisis posterior, incluso si no se pudo extraer texto
+      try {
+        await storeReceiptImage(
+          imageBuffer,
+          "unprocessed", // No tenemos businessSlug aún
+          user.phone,
+          `queue_error_${queueId}_${Date.now()}`
+        );
+        console.log("📸 Imagen almacenada para análisis posterior (error de Vision API)");
+      } catch (storageError) {
+        console.error("⚠️ Error almacenando imagen con error de Vision API:", storageError.message);
+        // No interrumpimos el flujo por un error de almacenamiento
+      }
+      
       throw new Error("No se pudo extraer texto de la imagen");
     }
     
@@ -236,6 +252,21 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
   } catch (visionError) {
     console.error("❌ Error en Vision API:", visionError.message);
     console.error("Detalles del error:", visionError);
+    
+    // Almacenar la imagen para análisis posterior en caso de error de Vision API
+    try {
+      await storeReceiptImage(
+        imageBuffer,
+        "vision_error", // Carpeta especial para errores de Vision API
+        user.phone,
+        `queue_error_${queueId}_${Date.now()}`
+      );
+      console.log("📸 Imagen almacenada para análisis posterior (error de Vision API)");
+    } catch (storageError) {
+      console.error("⚠️ Error almacenando imagen con error de Vision API:", storageError.message);
+      // No interrumpimos el flujo por un error de almacenamiento
+    }
+    
     throw new Error(`Error procesando imagen con Vision API: ${visionError.message}`);
   }
   
@@ -256,6 +287,20 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
   const business = await findBusinessByRUC(extractedData.ruc);
   
   if (!business) {
+    // Almacenar la imagen para análisis posterior, incluso si el negocio no está registrado
+    try {
+      await storeReceiptImage(
+        imageBuffer,
+        "unregistered_business",
+        user.phone,
+        `queue_ruc_${extractedData.ruc}_${Date.now()}`
+      );
+      console.log("📸 Imagen almacenada para análisis posterior (negocio no registrado)");
+    } catch (storageError) {
+      console.error("⚠️ Error almacenando imagen de negocio no registrado:", storageError.message);
+      // No interrumpimos el flujo por un error de almacenamiento
+    }
+    
     throw new Error(`Negocio no registrado con RUC: ${extractedData.ruc}`);
   }
   
@@ -263,13 +308,35 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
   extractedData.businessSlug = business.slug || extractedData.businessSlug;
   extractedData.businessName = business.name || extractedData.businessName;
   
+  // Almacenar la imagen en Firebase Storage
+  let receiptImageUrl = null;
+  try {
+    console.log("📸 Almacenando imagen del recibo en Firebase Storage...");
+    const storageResult = await storeReceiptImage(
+      imageBuffer,
+      extractedData.businessSlug,
+      user.phone,
+      `queue_ruc_${extractedData.ruc}_${Date.now()}`
+    );
+    
+    if (storageResult) {
+      receiptImageUrl = storageResult.url;
+      console.log("✅ Imagen almacenada correctamente:", receiptImageUrl);
+    } else {
+      console.warn("⚠️ No se pudo almacenar la imagen, continuando sin URL de imagen");
+    }
+  } catch (storageError) {
+    console.error("⚠️ Error almacenando imagen:", storageError.message);
+    // No interrumpimos el flujo por un error de almacenamiento
+  }
+  
   // Verificar si el recibo ya ha sido registrado
   console.log("🔄 Verificando si el comprobante es duplicado...");
   const isDuplicate = await isDuplicateReceipt(
     extractedData.businessSlug,
     user.phone,
     extractedData.amount,
-    null,
+    receiptImageUrl, // Ahora pasamos la URL de la imagen
     {
       ruc: extractedData.ruc,
       invoiceNumber: extractedData.invoiceNumber,
@@ -280,13 +347,13 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
     throw new Error("Este comprobante ya ha sido registrado anteriormente");
   }
   
-  // Registrar la compra (sin URL de imagen por ahora)
+  // Registrar la compra con URL de imagen si está disponible
   console.log("💾 Registrando compra en Firestore...");
   const result = await registerPurchase(
     extractedData.businessSlug,
     user.phone,
     extractedData.amount,
-    null, // No tenemos URL de imagen en este punto
+    receiptImageUrl, // Ahora pasamos la URL de la imagen almacenada
     {
       ruc: extractedData.ruc,
       invoiceNumber: extractedData.invoiceId,
@@ -295,7 +362,8 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
       customerName: user.name || "Cliente",
       verified: true,
       processedFromQueue: true,
-      queueId
+      queueId,
+      hasStoredImage: !!receiptImageUrl // Indicador de si tenemos imagen almacenada
     }
   );
   
