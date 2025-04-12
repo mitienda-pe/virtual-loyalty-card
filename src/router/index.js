@@ -70,6 +70,13 @@ const routes = [
         component: () => import("@/views/admin/Statistics.vue"),
         meta: { requiresSuperAdmin: true },
       },
+      // Ruta para consumos de clientes (SuperAdmin)
+      {
+        path: "client-consumption",
+        name: "ClientConsumption",
+        component: () => import("@/views/admin/ClientConsumption.vue"),
+        meta: { requiresSuperAdmin: true },
+      },
       // Ruta para configuración de WhatsApp (SuperAdmin)
       {
         path: "whatsapp",
