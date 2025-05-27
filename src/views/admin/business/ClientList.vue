@@ -447,21 +447,9 @@ onMounted(async () => {
 });
 
 async function loadClients() {
-  // DEBUG: Confirmar ejecución de loadClients
-  alert('[DEBUG] Ejecutando loadClients. businessId: ' + businessId.value);
-  console.log('[DEBUG] Ejecutando loadClients. businessId:', businessId.value);
-  // DEBUG: Mostrar businessId actual
-  console.log('[CLIENTES] businessId usado para query:', businessId.value);
   try {
-    // DEBUG: Mostrar todos los documentos en business_customers
-    const allDocsSnapshot = await getDocs(collection(db, "business_customers"));
-    allDocsSnapshot.forEach(doc => console.log('[DEBUG] business_customers doc:', doc.id, doc.data()));
-
-    const clientsQuery = query(
-      collection(db, "business_customers"),
-      where("businessSlug", "==", businessId.value)
-    );
-    
+    // Query to subcollection 'customers' inside the business document
+    const clientsQuery = collection(db, "business_customers", businessId.value, "customers");
     const clientsSnapshot = await getDocs(clientsQuery);
   // DEBUG: Mostrar cantidad de documentos encontrados
   console.log('[CLIENTES] Documentos encontrados en client_businesses:', clientsSnapshot.size);

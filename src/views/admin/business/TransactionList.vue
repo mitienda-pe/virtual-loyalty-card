@@ -301,11 +301,8 @@ watch(
 
 async function loadTransactions() {
   try {
-    const transactionsQuery = query(
-      collection(db, "business_invoices"),
-      where("businessSlug", "==", businessId.value),
-      orderBy("timestamp", "desc")
-    );
+    // Query to subcollection 'purchases' inside the business document
+    const transactionsQuery = collection(db, "business_invoices", businessId.value, "purchases");
     
     const snapshot = await getDocs(transactionsQuery);
     
