@@ -135,19 +135,7 @@ const routes = [
       {
         path: "business/rewards",
         name: "BusinessRewards",
-        component: () => import("@/views/admin/business/RewardList.vue"),
-        meta: { requiresBusinessAdmin: true },
-      },
-      {
-        path: "business/rewards/new",
-        name: "BusinessRewardCreate",
-        component: () => import("@/views/admin/business/RewardForm.vue"),
-        meta: { requiresBusinessAdmin: true },
-      },
-      {
-        path: "business/rewards/:id/edit",
-        name: "BusinessRewardEdit",
-        component: () => import("@/views/admin/business/RewardForm.vue"),
+        component: () => import("@/views/admin/business/RewardsList.vue"),
         meta: { requiresBusinessAdmin: true },
       },
       // Ruta para editar negocio (Business Admin)
@@ -189,7 +177,8 @@ const routes = [
       {
         path: "rewards",
         name: "ClientRewards",
-        component: () => import("@/views/client/RewardList.vue"),
+        // (Ruta eliminada: RewardList.vue ya no existe)
+
       },
     ],
   },

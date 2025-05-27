@@ -773,6 +773,90 @@ async function findBusinessByRUC(ruc) {
   }
 }
 
+/**
+ * Redime una recompensa para un cliente, usando consumos FIFO y registrando la redención
+ * @param {string} businessSlug - Slug del negocio
+ * @param {string} phoneNumber - Número de teléfono del cliente
+ * @param {object} redemptionData - Datos de la redención: { reward, approvedBy, consumptionsNeeded, customerName }
+ * @returns {Promise<object>} - Resultado de la redención
+ */
+async function redeemReward(businessSlug, phoneNumber, redemptionData = {}) {
+  if (!db) throw new Error('Firestore DB not initialized');
+  if (!businessSlug || !phoneNumber || !redemptionData.reward) {
+    throw new Error('Parámetros requeridos faltantes para redención');
+  }
+  const normalizedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+${phoneNumber}`;
+  const customerRef = db.collection("customers").doc(normalizedPhone);
+  const redemptionsRef = db.collection("business_redemptions").doc(businessSlug).collection("redemptions");
+
+  return await db.runTransaction(async (t) => {
+    const customerDoc = await t.get(customerRef);
+    if (!customerDoc.exists) throw new Error('Cliente no encontrado');
+    const customerData = customerDoc.data();
+    const businessData = customerData.businesses?.[businessSlug];
+    if (!businessData || !Array.isArray(businessData.purchases)) {
+      throw new Error('No hay consumos registrados para este negocio');
+    }
+    const consumptionsNeeded = redemptionData.consumptionsNeeded || 10;
+    // Buscar consumos no usados (FIFO)
+    const purchases = businessData.purchases;
+    const unusedIndexes = [];
+    for (let i = 0; i < purchases.length; i++) {
+      if (!purchases[i].usedForRedemption) unusedIndexes.push(i);
+      if (unusedIndexes.length === consumptionsNeeded) break;
+    }
+    if (unusedIndexes.length < consumptionsNeeded) {
+      throw new Error('No hay suficientes consumos para redimir la recompensa');
+    }
+    // Marcar consumos como usados
+    const consumptionsUsed = [];
+    for (const idx of unusedIndexes) {
+      purchases[idx].usedForRedemption = true;
+      consumptionsUsed.push({
+        amount: purchases[idx].amount,
+        date: purchases[idx].date,
+        invoiceNumber: purchases[idx].invoiceNumber || null,
+        ruc: purchases[idx].ruc || null,
+        receiptUrl: purchases[idx].receiptUrl || null,
+      });
+    }
+    // Actualizar datos de cliente
+    t.update(customerRef, {
+      [`businesses.${businessSlug}.purchases`]: purchases,
+    });
+    // Crear registro de redención
+    const redemptionRecord = {
+      phoneNumber: normalizedPhone,
+      customerName: redemptionData.customerName || customerData.profile?.name || 'Cliente',
+      date: admin.firestore.FieldValue.serverTimestamp(),
+      reward: redemptionData.reward,
+      consumptionsUsed,
+      approvedBy: redemptionData.approvedBy || null,
+      status: 'approved',
+    };
+    const redemptionDocRef = redemptionsRef.doc();
+    t.set(redemptionDocRef, redemptionRecord);
+    return {
+      success: true,
+      redemption: redemptionRecord,
+    };
+  });
+}
+
+/**
+ * Obtiene el historial de redenciones de un cliente para un negocio
+ * @param {string} businessSlug
+ * @param {string} phoneNumber
+ * @returns {Promise<object[]>}
+ */
+async function getRedemptionHistory(businessSlug, phoneNumber) {
+  if (!db) throw new Error('Firestore DB not initialized');
+  const normalizedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+${phoneNumber}`;
+  const redemptionsRef = db.collection("business_redemptions").doc(businessSlug).collection("redemptions");
+  const snapshot = await redemptionsRef.where("phoneNumber", "==", normalizedPhone).orderBy("date", "desc").get();
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
 module.exports = {
   setFirestoreDb,
   isDuplicateReceipt,
@@ -780,4 +864,6 @@ module.exports = {
   registerPurchase,
   getCustomerPointsInfo,
   findBusinessByRUC,
+  redeemReward,
+  getRedemptionHistory,
 };

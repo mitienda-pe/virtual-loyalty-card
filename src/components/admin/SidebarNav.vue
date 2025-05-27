@@ -100,39 +100,39 @@
           <!-- Dashboard -->
           <li class="nav-item">
             <router-link to="/admin/business/dashboard" class="nav-link" :class="{ active: $route.path === '/admin/business/dashboard' }" @click="handleMobileClick">
-              <Store class="me-3" :size="20" />
-              <span v-if="!collapsed">Mi Negocio</span>
+              <LayoutDashboard class="me-3" :size="20" />
+              <span v-if="!collapsed">Dashboard</span>
             </router-link>
           </li>
-          <!-- Editar Negocio -->
+          <!-- Mi Negocio (antes Editar Negocio) -->
           <li class="nav-item">
             <router-link to="/admin/business/settings" class="nav-link" :class="{ active: $route.path === '/admin/business/settings' }" @click="handleMobileClick">
-              <Settings class="me-3" :size="20" />
-              <span v-if="!collapsed">Editar Negocio</span>
+              <Store class="me-3" :size="20" />
+              <span v-if="!collapsed">Mi negocio</span>
             </router-link>
           </li>
 
-          <!-- Clients -->
+          <!-- Clientes -->
           <li class="nav-item">
             <router-link to="/admin/business/clients" class="nav-link" :class="{ active: $route.path === '/admin/business/clients' }" @click="handleMobileClick">
-              <UserRound class="me-3" :size="20" />
+              <Users class="me-3" :size="20" />
               <span v-if="!collapsed">Clientes</span>
             </router-link>
           </li>
 
-          <!-- Transactions -->
+          <!-- Transacciones -->
           <li class="nav-item">
             <router-link to="/admin/business/transactions" class="nav-link" :class="{ active: $route.path === '/admin/business/transactions' }" @click="handleMobileClick">
-              <ShoppingBag class="me-3" :size="20" />
+              <Receipt class="me-3" :size="20" />
               <span v-if="!collapsed">Transacciones</span>
             </router-link>
           </li>
 
-          <!-- Rewards -->
+          <!-- Premios Canjeados -->
           <li class="nav-item">
-            <router-link to="/admin/business/rewards" class="nav-link" :class="{ active: $route.path.includes('/admin/business/rewards') }" @click="handleMobileClick">
+            <router-link to="/admin/business/rewards" class="nav-link" :class="{ active: $route.path === '/admin/business/rewards' }" @click="handleMobileClick">
               <Gift class="me-3" :size="20" />
-              <span v-if="!collapsed">Premios</span>
+              <span v-if="!collapsed">Premios Canjeados</span>
             </router-link>
           </li>
         </template>
@@ -176,7 +176,8 @@ import {
   Settings, 
   LogOut, 
   User, 
-  UserCheck
+  UserCheck,
+  Gift
 } from 'lucide-vue-next';
 
 const router = useRouter();

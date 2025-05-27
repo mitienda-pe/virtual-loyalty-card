@@ -103,6 +103,11 @@
             <h5 class="modal-title" id="clientDetailsModalLabel">Detalles del Cliente</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
+          <div class="modal-body pb-0 d-flex flex-row-reverse">
+            <button class="btn btn-warning mb-2" @click="showRedeemRewardModal(selectedClient)">
+              <i class="bi bi-gift"></i> Canjear Premio
+            </button>
+          </div>
           <div class="modal-body" v-if="selectedClient">
             <div class="row">
               <div class="col-md-6">
@@ -187,6 +192,37 @@
       </div>
     </div>
     
+    <!-- Modal para canjear premio -->
+    <div class="modal fade" id="redeemRewardModal" tabindex="-1" aria-labelledby="redeemRewardModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header bg-warning text-dark">
+            <h5 class="modal-title" id="redeemRewardModalLabel">Canjear Premio</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form @submit.prevent="redeemRewardAction">
+              <div class="mb-3">
+                <label for="rewardName" class="form-label">Premio a canjear</label>
+                <input type="text" class="form-control" id="rewardName" v-model="rewardToRedeem" placeholder="Ej: Café gratis" required>
+              </div>
+              <div class="mb-3">
+                <label for="consumptionsNeeded" class="form-label">Consumos requeridos</label>
+                <input type="number" class="form-control" id="consumptionsNeeded" v-model.number="consumptionsNeeded" min="1" required>
+              </div>
+              <div class="alert alert-info" v-if="redemptionMessage">{{ redemptionMessage }}</div>
+              <div class="d-grid">
+                <button type="submit" class="btn btn-warning" :disabled="redeemingReward">
+                  <span v-if="redeemingReward" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                  Confirmar Canje
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal para añadir cliente -->
     <div class="modal fade" id="addClientModal" tabindex="-1" aria-labelledby="addClientModalLabel" aria-hidden="true">
       <div class="modal-dialog">
@@ -298,6 +334,66 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useAuthStore } from '@/stores/auth';
+// Import your backend redeemReward function (adjust path as needed)
+// import { redeemReward } from '@/api/redemption';
+
+// Modal state for reward redemption
+const redeemRewardModal = ref(null);
+const rewardToRedeem = ref('');
+const consumptionsNeeded = ref(10); // Default value, adjust as needed
+const redeemingReward = ref(false);
+const redemptionMessage = ref('');
+let redeemingClient = ref(null);
+
+function showRedeemRewardModal(client) {
+  redeemingClient.value = client;
+  rewardToRedeem.value = '';
+  consumptionsNeeded.value = 10;
+  redemptionMessage.value = '';
+  if (!redeemRewardModal.value) {
+    redeemRewardModal.value = new bootstrap.Modal(document.getElementById('redeemRewardModal'));
+  }
+  redeemRewardModal.value.show();
+}
+
+async function redeemRewardAction() {
+  if (!redeemingClient.value || !rewardToRedeem.value) return;
+  redeemingReward.value = true;
+  redemptionMessage.value = '';
+  try {
+    // Real backend call
+    const payload = {
+      businessSlug: businessId.value,
+      phoneNumber: redeemingClient.value.phone,
+      reward: rewardToRedeem.value,
+      consumptionsNeeded: consumptionsNeeded.value,
+      approvedBy: authStore.user?.displayName || 'Admin',
+      customerName: redeemingClient.value.name
+    };
+    const res = await fetch('/api/redeemReward', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const result = await res.json();
+    if (result.success) {
+      redemptionMessage.value = '¡Premio canjeado exitosamente!';
+      // Refresh client rewards/transactions
+      await loadClientRewards(redeemingClient.value.id);
+      setTimeout(() => {
+        redeemRewardModal.value.hide();
+      }, 1200);
+    } else {
+      redemptionMessage.value = result.message || 'No se pudo canjear el premio.';
+    }
+  } catch (e) {
+    redemptionMessage.value = e.message || 'Error al canjear premio.';
+  } finally {
+    redeemingReward.value = false;
+  }
+}
+
+
 import { 
   collection, query, where, orderBy, getDocs, getDoc, doc,
   addDoc, updateDoc, serverTimestamp, increment, limit
@@ -479,24 +575,34 @@ async function loadClientTransactions(clientId) {
 
 async function loadClientRewards(clientId) {
   try {
-    const rewardsQuery = query(
-      collection(db, "client_rewards"),
-      where("clientId", "==", clientId),
-      where("businessId", "==", businessId.value),
-      orderBy("createdAt", "desc"),
+    // Fetch from business_redemptions/{businessSlug}/redemptions where phoneNumber == client phone
+    const businessSlug = businessId.value;
+    const client = clients.value.find(c => c.id === clientId);
+    const phoneNumber = client?.phone || clientId;
+    const redemptionsQuery = query(
+      collection(db, `business_redemptions/${businessSlug}/redemptions`),
+      where("phoneNumber", "==", phoneNumber),
+      orderBy("date", "desc"),
       limit(5)
     );
-    
-    const snapshot = await getDocs(rewardsQuery);
-    clientRewards.value = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    const snapshot = await getDocs(redemptionsQuery);
+    clientRewards.value = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        createdAt: data.date?.toDate ? data.date.toDate() : (data.date || null),
+        rewardName: data.reward || '',
+        pointsCost: data.consumptionsUsed ? data.consumptionsUsed.length : data.consumptionsNeeded || '',
+        redeemed: data.status === 'approved',
+        ...data
+      };
+    });
   } catch (error) {
     console.error("Error al cargar premios del cliente:", error);
     clientRewards.value = [];
   }
 }
+
 
 function showAddClientModal() {
   newClient.value = {
