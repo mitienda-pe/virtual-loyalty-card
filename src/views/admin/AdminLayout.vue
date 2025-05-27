@@ -1,84 +1,84 @@
 <!-- src/views/admin/AdminLayout.vue -->
 <template>
-  <div class="admin-layout d-flex">
-    <!-- Sidebar Navigation -->
-    <SidebarNav ref="sidebarNavRef" />
-    
-    <!-- Main Content Area -->
-    <div class="main-content">
-      <!-- Top Header -->
-      <header class="header bg-white shadow-sm py-3 px-4 d-flex justify-content-between align-items-center sticky-top">
-        <div class="d-flex align-items-center">
-          <!-- Botón de menú hamburguesa para móvil -->
-          <button 
-            class="btn btn-light me-3 d-md-none" 
-            @click="toggleMobileMenu"
-            aria-label="Menú"
-          >
-            <Menu class="fs-4" />
-          </button>
-          
-          <!-- Título de la página con descripción -->
-          <div>
-            <h4 class="mb-0">{{ pageTitle }}</h4>
-            <p class="text-muted small mb-0" v-if="pageDescription">{{ pageDescription }}</p>
-          </div>
+  <div class="admin-layout">
+    <!-- Top Header -->
+    <header class="header bg-white shadow-sm py-3 px-4 d-flex justify-content-between align-items-center sticky-top w-100">
+      <div class="d-flex align-items-center">
+        <!-- Botón de menú hamburguesa para móvil -->
+        <button 
+          class="btn btn-light me-3 d-md-none" 
+          @click="toggleMobileMenu"
+          aria-label="Menú"
+        >
+          <Menu class="fs-4" />
+        </button>
+
+        <!-- Logotipo principal -->
+        <img :src="logo" alt="Loyalty Card Logo" style="height:32px; width:auto; margin-right:1.5rem;" />
+
+        <!-- Descripción de la página con descripción -->
+        <div>
+          <p class="text-muted small mb-0" v-if="pageDescription">{{ pageDescription }}</p>
         </div>
-        
-        <div class="d-flex align-items-center">
-          <!-- Botón de acción principal (si aplica) -->
-          <button 
-            v-if="showActionButton" 
-            class="btn btn-primary me-3"
-            @click="handleActionButton"
-          >
-            <component :is="actionButtonIcon" />
-            <span class="ms-1 d-none d-md-inline">{{ actionButtonText }}</span>
+      </div>
+      <div class="d-flex align-items-center">
+        <!-- Botón de acción principal (si aplica) -->
+        <button 
+          v-if="showActionButton" 
+          class="btn btn-primary me-3"
+          @click="handleActionButton"
+        >
+          <component :is="actionButtonIcon" />
+          <span class="ms-1 d-none d-md-inline">{{ actionButtonText }}</span>
+        </button>
+        <!-- Notificaciones (solo visible en pantallas medianas y grandes) -->
+        <div class="dropdown me-3 d-none d-md-block">
+          <button class="btn btn-light position-relative" type="button" id="notificationsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+            <Bell />
+            <span v-if="notificationCount > 0" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+              {{ notificationCount }}
+            </span>
           </button>
-          
-          <!-- Notificaciones (solo visible en pantallas medianas y grandes) -->
-          <div class="dropdown me-3 d-none d-md-block">
-            <button class="btn btn-light position-relative" type="button" id="notificationsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-              <Bell />
-              <span v-if="notificationCount > 0" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
-                {{ notificationCount }}
-              </span>
-            </button>
-            <div class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="notificationsDropdown" style="width: 300px;">
-              <h6 class="dropdown-header">Notificaciones</h6>
-              <div v-if="notifications.length === 0" class="dropdown-item-text text-center py-3">
-                <BellOff class="text-muted" />
-                <p class="mb-0 small">No tienes notificaciones nuevas</p>
-              </div>
-              <template v-else>
-                <a href="#" class="dropdown-item py-2" v-for="(notification, index) in notifications" :key="index">
-                  <div class="d-flex align-items-center">
-                    <div class="flex-shrink-0">
-                      <i :class="`bi ${notification.icon} text-${notification.type} bg-${notification.type} bg-opacity-10 p-2 rounded-circle`"></i>
-                    </div>
-                    <div class="flex-grow-1 ms-3">
-                      <p class="mb-0 small fw-medium">{{ notification.title }}</p>
-                      <p class="mb-0 small text-muted">{{ notification.time }}</p>
-                    </div>
-                  </div>
-                </a>
-                <div class="dropdown-divider"></div>
-                <a href="#" class="dropdown-item text-center small text-primary">Ver todas las notificaciones</a>
-              </template>
+          <div class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="notificationsDropdown" style="width: 300px;">
+            <h6 class="dropdown-header">Notificaciones</h6>
+            <div v-if="notifications.length === 0" class="dropdown-item-text text-center py-3">
+              <BellOff class="text-muted" />
+              <p class="mb-0 small">No tienes notificaciones nuevas</p>
             </div>
+            <template v-else>
+              <a href="#" class="dropdown-item py-2" v-for="(notification, index) in notifications" :key="index">
+                <div class="d-flex align-items-center">
+                  <div class="flex-shrink-0">
+                    <i :class="`bi ${notification.icon} text-${notification.type} bg-${notification.type} bg-opacity-10 p-2 rounded-circle`"></i>
+                  </div>
+                  <div class="flex-grow-1 ms-3">
+                    <p class="mb-0 small fw-medium">{{ notification.title }}</p>
+                    <p class="mb-0 small text-muted">{{ notification.time }}</p>
+                  </div>
+                </div>
+              </a>
+              <div class="dropdown-divider"></div>
+              <a href="#" class="dropdown-item text-center small text-primary">Ver todas las notificaciones</a>
+            </template>
           </div>
         </div>
-      </header>
-      
-      <!-- Page Content -->
-      <div class="content p-4">
-        <router-view />
+      </div>
+    </header>
+    <div class="d-flex" style="min-height:calc(100vh - 64px)">
+      <!-- Sidebar Navigation -->
+      <SidebarNav ref="sidebarNavRef" />
+      <!-- Main Content Area -->
+      <div class="main-content flex-grow-1">
+        <div class="content p-4">
+          <router-view />
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import logo from '@/assets/logo.svg';
 import { ref, computed, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
@@ -283,7 +283,6 @@ onMounted(() => {
 
 .main-content {
   flex: 1;
-  margin-left: 250px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;

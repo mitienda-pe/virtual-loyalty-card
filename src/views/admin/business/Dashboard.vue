@@ -1,6 +1,5 @@
 <template>
   <div class="business-admin-dashboard">
-    <h2 class="mb-4">Dashboard de Administrador</h2>
     
     <div class="row">
       <div class="col-md-4 mb-4">
@@ -172,9 +171,7 @@
               <button class="btn btn-success" @click="showAddTransactionModal">
                 <i class="bi bi-cash"></i> Registrar Compra
               </button>
-              <router-link to="/admin/business/rewards/new" class="btn btn-info">
-                <i class="bi bi-gift"></i> Crear Nuevo Premio
-              </router-link>
+              
             </div>
           </div>
         </div>

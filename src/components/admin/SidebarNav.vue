@@ -1,12 +1,8 @@
 <!-- src/components/admin/SidebarNav.vue -->
 <template>
   <div class="sidebar bg-white shadow-sm" :class="{ 'sidebar-collapsed': collapsed, 'sidebar-mobile-open': mobileOpen }">
-    <!-- Logo and toggle -->
-    <div class="sidebar-header d-flex align-items-center justify-content-between p-3">
-      <router-link to="/" class="sidebar-logo text-decoration-none d-flex align-items-center">
-        <i class="bi bi-credit-card-2-front fs-4 text-primary me-2"></i>
-        <span v-if="!collapsed" class="sidebar-logo-text fw-bold text-dark">Loyalty Card</span>
-      </router-link>
+    <!-- Toggle only -->
+    <div class="sidebar-header d-flex align-items-center justify-content-end p-3">
       <button 
         class="btn btn-sm btn-outline-secondary border-0 d-none d-md-block" 
         @click="toggleSidebar"
@@ -273,11 +269,11 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   width: 250px;
-  height: 100vh;
-  position: fixed;
+  height: calc(100vh - 56px);
+  position: sticky;
   left: 0;
-  top: 0;
-  z-index: 1030;
+  top: 56px;
+  z-index: 1010;
   transition: all 0.3s ease;
 }
 

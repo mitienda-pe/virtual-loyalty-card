@@ -275,17 +275,7 @@
       </div>
     </div>
 
-    <!-- Dashboard de Business Admin -->
-    <div v-else-if="authStore.isBusinessAdmin">
-      <div class="alert alert-info">
-        <Info class="me-2" /> Por favor, utiliza el menú de navegación para acceder a las funciones de
-        administración de tu negocio.
-      </div>
-
-      <router-link to="/admin/business/dashboard" class="btn btn-primary">
-        Ir al Dashboard de mi Negocio
-      </router-link>
-    </div>
+    
 
     <!-- Modal para configuración de WhatsApp -->
     <div class="modal fade" id="whatsappConfigModal" tabindex="-1" aria-labelledby="whatsappConfigModalLabel"
@@ -448,6 +438,14 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+const router = useRouter();
+
+onMounted(() => {
+  if (authStore.isBusinessAdmin) {
+    router.replace('/admin/business/dashboard');
+  }
+});
 import { collection, getDocs, query, where, orderBy, limit, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/firebase';

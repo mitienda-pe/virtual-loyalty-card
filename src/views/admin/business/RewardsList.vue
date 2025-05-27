@@ -1,5 +1,6 @@
 <template>
   <div class="container py-4">
+
     <h2 class="mb-4">Premios Canjeados</h2>
     <div class="card">
       <div class="card-body">

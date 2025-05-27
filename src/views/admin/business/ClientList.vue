@@ -1,7 +1,6 @@
 <template>
   <div class="client-list">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2>Clientes del Negocio</h2>
       <button class="btn btn-primary" @click="showAddClientModal">
         <i class="bi bi-person-plus"></i> Añadir Cliente
       </button>
@@ -448,13 +447,22 @@ onMounted(async () => {
 });
 
 async function loadClients() {
+  // DEBUG: Mostrar businessId actual
+  console.log('[CLIENTES] businessId usado para query:', businessId.value);
   try {
+    // DEBUG: Mostrar todos los documentos en business_customers
+    const allDocsSnapshot = await getDocs(collection(db, "business_customers"));
+    allDocsSnapshot.forEach(doc => console.log('[DEBUG] business_customers doc:', doc.id, doc.data()));
+
     const clientsQuery = query(
-      collection(db, "client_businesses"),
-      where("businessId", "==", businessId.value)
+      collection(db, "business_customers"),
+      where("businessSlug", "==", businessId.value)
     );
     
     const clientsSnapshot = await getDocs(clientsQuery);
+  // DEBUG: Mostrar cantidad de documentos encontrados
+  console.log('[CLIENTES] Documentos encontrados en client_businesses:', clientsSnapshot.size);
+  clientsSnapshot.forEach(doc => console.log('[CLIENTES] Documento:', doc.id, doc.data()));
     
     // Obtener información adicional de cada cliente
     const clientsData = await Promise.all(clientsSnapshot.docs.map(async (docSnap) => {

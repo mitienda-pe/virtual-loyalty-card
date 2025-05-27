@@ -1,7 +1,6 @@
 <template>
   <div class="transaction-list">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2>Transacciones del Negocio</h2>
       <button class="btn btn-primary" @click="showAddTransactionModal">
         <i class="bi bi-plus-circle"></i> Nueva Transacción
       </button>
@@ -277,20 +276,34 @@ onMounted(async () => {
     transactionDetailsModal = new bootstrap.Modal(document.getElementById('transactionDetailsModal'));
     addTransactionModal = new bootstrap.Modal(document.getElementById('addTransactionModal'));
     
-    await Promise.all([
-      loadTransactions(),
-      loadClients()
-    ]);
-    
-    loading.value = false;
+    if (authStore.businessId) {
+      await Promise.all([
+        loadTransactions(),
+        loadClients()
+      ]);
+      loading.value = false;
+    }
   }
 });
+
+watch(
+  () => authStore.businessId,
+  async (newBusinessId, oldBusinessId) => {
+    if (newBusinessId && newBusinessId !== oldBusinessId && authStore.isAuthenticated && (authStore.isBusinessAdmin || authStore.isSuperAdmin)) {
+      await Promise.all([
+        loadTransactions(),
+        loadClients()
+      ]);
+      loading.value = false;
+    }
+  }
+);
 
 async function loadTransactions() {
   try {
     const transactionsQuery = query(
-      collection(db, "transactions"),
-      where("businessId", "==", businessId.value),
+      collection(db, "business_invoices"),
+      where("businessSlug", "==", businessId.value),
       orderBy("timestamp", "desc")
     );
     
@@ -327,8 +340,8 @@ async function loadTransactions() {
 async function loadClients() {
   try {
     const clientsQuery = query(
-      collection(db, "client_businesses"),
-      where("businessId", "==", businessId.value)
+      collection(db, "business_customers"),
+      where("businessSlug", "==", businessId.value)
     );
     
     const clientsSnapshot = await getDocs(clientsQuery);

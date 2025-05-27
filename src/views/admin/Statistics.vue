@@ -6,7 +6,7 @@
         <div class="card border-0 shadow-sm">
           <div class="card-body text-center py-5">
             <i class="bi bi-bar-chart-line fs-1 text-primary mb-3"></i>
-            <h2 class="mb-3">Estadísticas</h2>
+
             <p class="lead text-muted">Aquí aparecerán las estadísticas</p>
           </div>
         </div>

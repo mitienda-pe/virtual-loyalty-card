@@ -1,10 +1,10 @@
 <!-- src/views/admin/BusinessForm.vue -->
 <template>
   <div class="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
+
+
     <div class="mb-8">
-      <h1 class="text-2xl font-semibold text-gray-900">
-        {{ isEdit ? 'Editar negocio' : 'Nuevo negocio' }}
-      </h1>
+      <h1 class="text-2xl font-semibold text-gray-900">{{ isEdit ? 'Editar negocio' : 'Nuevo negocio' }}</h1>
     </div>
 
     <form @submit.prevent="handleSubmit" class="space-y-6">
