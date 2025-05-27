@@ -1,10 +1,7 @@
 <template>
   <div class="reward-list">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2>Premios del Negocio</h2>
-      <router-link to="/admin/business/rewards/new" class="btn btn-primary">
-        <i class="bi bi-plus-circle"></i> Crear Nuevo Premio
-      </router-link>
+      <h2>Negocios</h2>
     </div>
     
     <div class="card">

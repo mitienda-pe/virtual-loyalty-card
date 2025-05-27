@@ -150,6 +150,13 @@ const routes = [
         component: () => import("@/views/admin/business/RewardForm.vue"),
         meta: { requiresBusinessAdmin: true },
       },
+      // Ruta para editar negocio (Business Admin)
+      {
+        path: "business/settings",
+        name: "BusinessSettings",
+        component: () => import("@/views/admin/business/BusinessSettings.vue"),
+        meta: { requiresBusinessAdmin: true },
+      },
     ],
   },
   // Rutas para Business Client

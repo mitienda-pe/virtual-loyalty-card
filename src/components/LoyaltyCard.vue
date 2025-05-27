@@ -65,10 +65,11 @@
                     <p class="text-lg font-semibold text-gray-700">
                         {{ purchaseCount }} de {{ purchasesRequired }} compras
                     </p>
-                    <div v-if="purchaseCount >= purchasesRequired"
+                    <!-- Mostrar premio alcanzado si corresponde -->
+                    <div v-if="currentReward"
                         class="mt-4 p-3 bg-green-100 text-green-800 rounded-md">
-                        <p class="font-medium">¡Felicidades! Has completado tu tarjeta</p>
-                        <p class="mt-1 text-sm">Premio: {{ business.config.reward }}</p>
+                        <p class="font-medium">¡Felicidades! Has alcanzado un premio</p>
+                        <p class="mt-1 text-sm">Premio: {{ currentReward.reward }} (por {{ currentReward.consumptions }} consumos)</p>
                     </div>
                     <p v-else class="text-sm text-gray-500 mt-2">
                         Te faltan {{ purchasesRequired - purchaseCount }} compras para completar tu tarjeta
@@ -176,6 +177,16 @@ const purchaseCount = computed(() => {
 
 const purchasesRequired = computed(() => {
     return business.value?.config?.purchasesRequired || 10;
+});
+
+// Premio escalonado alcanzado
+const currentReward = computed(() => {
+    const rewards = business.value?.config?.rewards || [];
+    // Buscar el escalón más alto alcanzado
+    const reached = rewards
+        .filter(r => Number(r.consumptions) > 0 && purchaseCount.value >= Number(r.consumptions))
+        .sort((a, b) => Number(b.consumptions) - Number(a.consumptions));
+    return reached.length > 0 ? reached[0] : null;
 });
 
 const recentPurchases = computed(() => {

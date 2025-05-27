@@ -198,6 +198,11 @@ exports.processImageTask = onRequest(
       confirmationMessage += `🛍️ Compra registrada exitosamente\n`;
       confirmationMessage += `🛒 Total de compras: ${customerInfo.purchaseCount}\n\n`;
       
+      // Agregar mensaje de premio escalonado si corresponde
+      if (purchaseResult.reward) {
+        confirmationMessage += `🎁 ¡Felicidades! Has alcanzado un premio: ${purchaseResult.reward}\n`;
+      }
+      
       // Agregar enlace a la tarjeta de fidelidad
       confirmationMessage += `Ver tu tarjeta de fidelidad: https://asiduo.club/${businessSlug}/${userPhoneNormalized}`;
       

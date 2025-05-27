@@ -104,6 +104,13 @@
               <span v-if="!collapsed">Mi Negocio</span>
             </router-link>
           </li>
+          <!-- Editar Negocio -->
+          <li class="nav-item">
+            <router-link to="/admin/business/settings" class="nav-link" :class="{ active: $route.path === '/admin/business/settings' }" @click="handleMobileClick">
+              <Settings class="me-3" :size="20" />
+              <span v-if="!collapsed">Editar Negocio</span>
+            </router-link>
+          </li>
 
           <!-- Clients -->
           <li class="nav-item">

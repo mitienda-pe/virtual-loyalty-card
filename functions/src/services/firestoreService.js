@@ -284,6 +284,24 @@ async function registerPurchase(
   // Obtener nombre del cliente
   let customerName = additionalData.customerName || "Cliente";
 
+  // Obtener configuración del negocio
+  let config = {};
+  try {
+    const businessRef = db.collection("businesses").doc(businessSlug);
+    const businessDoc = await businessRef.get();
+    if (businessDoc.exists && businessDoc.data().config) {
+      config = businessDoc.data().config;
+    }
+  } catch (err) {
+    console.error('No se pudo obtener configuración del negocio:', err);
+  }
+
+  // Validar minAmount (si está definido)
+  if (config.minAmount && parseFloat(amount) < config.minAmount) {
+    console.log(`Compra menor al minAmount (${config.minAmount}), no se registra consumo.`);
+    return { success: false, message: `El monto mínimo para registrar un consumo es ${config.minAmount}` };
+  }
+
   // 1. Actualizar colección customers
   // Referencia al documento del cliente
   const customerRef = db.collection("customers").doc(normalizedPhone);
@@ -366,29 +384,16 @@ async function registerPurchase(
     ? 0
     : totalSpent;
 
-  // Lógica de ejemplo para puntos basada en la configuración del negocio
-  try {
-    const businessRef = db.collection("businesses").doc(businessSlug);
-    const businessDoc = await businessRef.get();
-    let config = {};
-    if (businessDoc.exists && businessDoc.data().config) {
-      config = businessDoc.data().config;
+  // Buscar si hay premio escalonado para este número de consumos
+  let escalatedReward = null;
+  if (Array.isArray(config.rewards)) {
+    const match = config.rewards.find(r => r.consumptions == customerData.businesses[businessSlug].purchaseCount);
+    if (match) {
+      escalatedReward = match.reward;
+      console.log(`¡Premio escalonado alcanzado!: ${escalatedReward}`);
     }
-    // Solo calcular puntos si hay lógica definida
-    let prevPoints = customerData.businesses[businessSlug].points || 0;
-    let addPoints = 0;
-    // Si hay un mínimo de monto para sumar puntos
-    if (config.minAmount && parseFloat(amount) < config.minAmount) {
-      addPoints = 0;
-    } else if (config.pointsPerPurchase) {
-      addPoints = config.pointsPerPurchase;
-    }
-    // Puedes agregar más lógica aquí según la config
-    customerData.businesses[businessSlug].points = prevPoints + addPoints;
-    console.log(`Puntos acumulados ahora: ${customerData.businesses[businessSlug].points}`);
-  } catch (err) {
-    console.error('No se pudo calcular puntos por configuración:', err);
   }
+
   console.log(
     `Total gastado calculado para ${phoneNumber} en ${businessSlug}: ${customerData.businesses[businessSlug].totalSpent}`
   );
@@ -570,6 +575,7 @@ async function registerPurchase(
       date: new Date(),
       invoiceId: invoiceId,
     },
+    reward: escalatedReward || null,
   };
 
   console.log(
