@@ -72,6 +72,14 @@
 
           <!-- Clients -->
           <li class="nav-item">
+            <router-link to="/admin/clients" class="nav-link" :class="{ active: $route.path.includes('/admin/clients') }" @click="handleMobileClick">
+              <Users class="me-3" :size="20" />
+              <span v-if="!collapsed">Clientes</span>
+            </router-link>
+          </li>
+
+          <!-- Consumptions -->
+          <li class="nav-item">
             <router-link to="/admin/client-consumption" class="nav-link" :class="{ active: $route.path === '/admin/client-consumption' }" @click="handleMobileClick">
               <Receipt class="me-3" :size="20" />
               <span v-if="!collapsed">Consumos</span>
@@ -156,11 +164,12 @@ import {
   Receipt, 
   BarChart3, 
   Store,
-  CreditCard,
-  ShoppingBag,
-  Gift,
-  User,
-  LogOut
+  CreditCard, 
+  MessageCircle, 
+  Settings, 
+  LogOut, 
+  User, 
+  UserCheck
 } from 'lucide-vue-next';
 
 const router = useRouter();

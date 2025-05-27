@@ -271,87 +271,133 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
   }
   
   console.log("📝 Texto extraído:", extractedText.substring(0, 200) + "...");
-  
-  // Extraer información relevante del texto
-  console.log("🔎 Extrayendo datos del texto...");
-  const extractedData = extractRUCAndAmount(extractedText);
-  console.log("📊 Datos extraídos:", JSON.stringify(extractedData, null, 2));
-  
-  // Verificar si tenemos el RUC y monto necesarios
-  if (!extractedData.ruc || !extractedData.amount) {
-    throw new Error("Información insuficiente en el comprobante");
-  }
-  
-  // Buscar el negocio por RUC en la base de datos
-  console.log("🔍 Buscando negocio con RUC:", extractedData.ruc);
-  const business = await findBusinessByRUC(extractedData.ruc);
-  
-  if (!business) {
-    // Almacenar la imagen para análisis posterior, incluso si el negocio no está registrado
-    try {
-      await storeReceiptImage(
-        imageBuffer,
-        "unregistered_business",
-        user.phone,
-        `queue_ruc_${extractedData.ruc}_${Date.now()}`
-      );
-      console.log("📸 Imagen almacenada para análisis posterior (negocio no registrado)");
-    } catch (storageError) {
-      console.error("⚠️ Error almacenando imagen de negocio no registrado:", storageError.message);
-      // No interrumpimos el flujo por un error de almacenamiento
-    }
-    
-    throw new Error(`Negocio no registrado con RUC: ${extractedData.ruc}`);
-  }
-  
-  // Usar el slug del negocio desde la base de datos
-  extractedData.businessSlug = business.slug || extractedData.businessSlug;
-  extractedData.businessName = business.name || extractedData.businessName;
-  
-  // Almacenar la imagen en Firebase Storage
-  let receiptImageUrl = null;
   try {
-    console.log("📸 Almacenando imagen del recibo en Firebase Storage...");
-    const storageResult = await storeReceiptImage(
+    await storeReceiptImage(
       imageBuffer,
-      extractedData.businessSlug,
+      "vision_error", // Carpeta especial para errores de Vision API
+      user.phone,
+      `queue_error_${queueId}_${Date.now()}`
+    );
+    console.log("📸 Imagen almacenada para análisis posterior (error de Vision API)");
+  } catch (storageError) {
+    console.error("⚠️ Error almacenando imagen con error de Vision API:", storageError.message);
+    // No interrumpimos el flujo por un error de almacenamiento
+  }
+
+  throw new Error(`Error procesando imagen con Vision API: ${visionError.message}`);
+}
+
+console.log("📝 Texto extraído:", extractedText.substring(0, 200) + "...");
+
+// Extraer información relevante del texto
+console.log("🔎 Extrayendo datos del texto...");
+const extractedData = extractRUCAndAmount(extractedText);
+console.log("📊 Datos extraídos:", JSON.stringify(extractedData, null, 2));
+
+// Verificar si tenemos el RUC, monto y número de comprobante necesarios
+if (!extractedData.ruc || !extractedData.amount || !extractedData.invoiceId) {
+  // Almacenar la imagen para análisis posterior, incluso si falta información
+  try {
+    await storeReceiptImage(
+      imageBuffer,
+      "missing_invoice_number",
+      user.phone,
+      `queue_missing_invoice_${Date.now()}`
+    );
+    console.log("📸 Imagen almacenada por falta de número de comprobante");
+  } catch (storageError) {
+    console.error("⚠️ Error almacenando imagen sin número de comprobante:", storageError.message);
+  }
+  // Notificar al usuario
+  await sendWhatsAppMessage(
+    user.phone,
+    "No se pudo registrar tu comprobante porque falta el número de comprobante (factura/boleta). Por favor, envía una imagen donde sea claramente visible.",
+    phoneNumberId,
+    apiToken
+  );
+  throw new Error("Información insuficiente en el comprobante: falta número de comprobante");
+}
+
+// Buscar el negocio por RUC en la base de datos
+console.log("🔍 Buscando negocio con RUC:", extractedData.ruc);
+const business = await findBusinessByRUC(extractedData.ruc);
+
+if (!business) {
+  // Almacenar la imagen para análisis posterior, incluso si el negocio no está registrado
+  try {
+    await storeReceiptImage(
+      imageBuffer,
+      "unregistered_business",
       user.phone,
       `queue_ruc_${extractedData.ruc}_${Date.now()}`
     );
-    
-    if (storageResult) {
-      receiptImageUrl = storageResult.url;
-      console.log("✅ Imagen almacenada correctamente:", receiptImageUrl);
-    } else {
-      console.warn("⚠️ No se pudo almacenar la imagen, continuando sin URL de imagen");
-    }
+    console.log("📸 Imagen almacenada para análisis posterior (negocio no registrado)");
   } catch (storageError) {
-    console.error("⚠️ Error almacenando imagen:", storageError.message);
+    console.error("⚠️ Error almacenando imagen de negocio no registrado:", storageError.message);
     // No interrumpimos el flujo por un error de almacenamiento
   }
-  
-  // Verificar si el recibo ya ha sido registrado
-  console.log("🔄 Verificando si el comprobante es duplicado...");
-  const isDuplicate = await isDuplicateReceipt(
+
+  throw new Error(`Negocio no registrado con RUC: ${extractedData.ruc}`);
+}
+
+// Usar el slug del negocio desde la base de datos
+extractedData.businessSlug = business.slug || extractedData.businessSlug;
+extractedData.businessName = business.name || extractedData.businessName;
+
+// Almacenar la imagen en Firebase Storage
+let receiptImageUrl = null;
+try {
+  console.log("📸 Almacenando imagen del recibo en Firebase Storage...");
+  const storageResult = await storeReceiptImage(
+    imageBuffer,
     extractedData.businessSlug,
     user.phone,
-    extractedData.amount,
-    receiptImageUrl, // Ahora pasamos la URL de la imagen
-    {
-      ruc: extractedData.ruc,
-      invoiceNumber: extractedData.invoiceNumber,
-    }
+    `queue_ruc_${extractedData.ruc}_${Date.now()}`
   );
-  
-  if (isDuplicate) {
-    throw new Error("Este comprobante ya ha sido registrado anteriormente");
+
+  if (storageResult) {
+    receiptImageUrl = storageResult.url;
+    console.log("✅ Imagen almacenada correctamente:", receiptImageUrl);
+  } else {
+    console.warn("⚠️ No se pudo almacenar la imagen, continuando sin URL de imagen");
   }
-  
-  // Registrar la compra con URL de imagen si está disponible
-  console.log("💾 Registrando compra en Firestore...");
-  const result = await registerPurchase(
-    extractedData.businessSlug,
+} catch (storageError) {
+  console.error("⚠️ Error almacenando imagen:", storageError.message);
+  // No interrumpimos el flujo por un error de almacenamiento
+}
+
+// Verificar si el recibo ya ha sido registrado (duplicado por número de comprobante y negocio)
+console.log("🔄 Verificando si el comprobante es duplicado...");
+const isDuplicate = await isDuplicateReceipt(
+  extractedData.businessSlug,
+  user.phone,
+  extractedData.amount,
+  receiptImageUrl,
+  {
+    ruc: extractedData.ruc,
+    invoiceNumber: extractedData.invoiceId,
+  }
+);
+
+if (isDuplicate) {
+  // Almacenar imagen para trazabilidad
+  try {
+    await storeReceiptImage(
+      imageBuffer,
+      "duplicate_invoice",
+      user.phone,
+      `queue_duplicate_invoice_${extractedData.invoiceId}_${Date.now()}`
+    );
+    console.log("📸 Imagen almacenada por comprobante duplicado");
+  } catch (storageError) {
+    console.error("⚠️ Error almacenando imagen duplicada:", storageError.message);
+  }
+  // Notificar al usuario
+  await sendWhatsAppMessage(
     user.phone,
+    `Este comprobante (N°: ${extractedData.invoiceId}) ya fue registrado anteriormente para este negocio. No se permiten duplicados.`,
+    phoneNumberId,
+    apiToken
     extractedData.amount,
     receiptImageUrl, // Ahora pasamos la URL de la imagen almacenada
     {

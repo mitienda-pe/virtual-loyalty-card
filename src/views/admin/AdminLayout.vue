@@ -15,7 +15,7 @@
             @click="toggleMobileMenu"
             aria-label="Menú"
           >
-            <i class="bi bi-list fs-4"></i>
+            <Menu class="fs-4" />
           </button>
           
           <!-- Título de la página con descripción -->
@@ -32,14 +32,14 @@
             class="btn btn-primary me-3"
             @click="handleActionButton"
           >
-            <i class="bi" :class="actionButtonIcon"></i>
+            <component :is="actionButtonIcon" />
             <span class="ms-1 d-none d-md-inline">{{ actionButtonText }}</span>
           </button>
           
           <!-- Notificaciones (solo visible en pantallas medianas y grandes) -->
           <div class="dropdown me-3 d-none d-md-block">
             <button class="btn btn-light position-relative" type="button" id="notificationsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-              <i class="bi bi-bell"></i>
+              <Bell />
               <span v-if="notificationCount > 0" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
                 {{ notificationCount }}
               </span>
@@ -47,7 +47,7 @@
             <div class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="notificationsDropdown" style="width: 300px;">
               <h6 class="dropdown-header">Notificaciones</h6>
               <div v-if="notifications.length === 0" class="dropdown-item-text text-center py-3">
-                <i class="bi bi-bell-slash text-muted"></i>
+                <BellOff class="text-muted" />
                 <p class="mb-0 small">No tienes notificaciones nuevas</p>
               </div>
               <template v-else>
@@ -84,6 +84,9 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import SidebarNav from '@/components/admin/SidebarNav.vue';
 
+// Importar componentes de Lucide específicos
+import { Menu, Bell, BellOff, Plus, Building, UserPlus, Gift } from 'lucide-vue-next';
+
 // Referencia al componente SidebarNav
 const sidebarNavRef = ref(null);
 
@@ -105,6 +108,7 @@ const pageTitle = computed(() => {
     '/admin/businesses/new': 'Nuevo Negocio',
     '/admin/users': 'Usuarios',
     '/admin/users/new': 'Nuevo Usuario',
+    '/admin/clients': 'Gestión de Clientes',
     '/admin/client-consumption': 'Consumos de Clientes',
     '/admin/statistics': 'Análisis de Datos',
     '/admin/profile': 'Mi Perfil',
@@ -123,7 +127,14 @@ const pageTitle = computed(() => {
       return 'Editar Usuario';
     } else if (route.path.includes('/rewards/')) {
       return 'Editar Premio';
+    } else if (route.path.includes('/clients/')) {
+      return 'Editar Cliente';
     }
+  }
+  
+  // Para rutas de detalle de cliente
+  if (route.path.match(/\/admin\/clients\/[^/]+$/) && !route.path.includes('/edit')) {
+    return 'Detalle de Cliente';
   }
   
   return routeTitles[route.path] || 'Panel de Administración';
@@ -140,6 +151,7 @@ const pageDescription = computed(() => {
     '/admin/businesses/new': 'Crear un nuevo negocio en el sistema',
     '/admin/users': 'Administración de usuarios del sistema',
     '/admin/users/new': 'Crear un nuevo usuario administrador',
+    '/admin/clients': 'Gestión y exportación de datos de clientes',
     '/admin/client-consumption': 'Seguimiento de compras y consumos de clientes',
     '/admin/statistics': 'Visualización y análisis detallado de datos',
     '/admin/profile': 'Información de tu perfil de usuario',
@@ -191,11 +203,11 @@ const actionButtonText = computed(() => {
 const actionButtonIcon = computed(() => {
   const route = router.currentRoute.value;
   
-  if (route.path === '/admin/businesses') return 'bi-building-add';
-  if (route.path === '/admin/users') return 'bi-person-plus';
-  if (route.path === '/admin/business/rewards') return 'bi-gift';
+  if (route.path === '/admin/businesses') return Building;
+  if (route.path === '/admin/users') return UserPlus;
+  if (route.path === '/admin/business/rewards') return Gift;
   
-  return 'bi-plus-lg';
+  return Plus;
 });
 
 // Cerrar sesión

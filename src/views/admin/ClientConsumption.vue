@@ -11,7 +11,7 @@
               <div class="col-md-4">
                 <label for="searchInput" class="form-label">Buscar Cliente</label>
                 <div class="input-group">
-                  <span class="input-group-text"><i class="bi bi-search"></i></span>
+                  <span class="input-group-text"><Search size="18" /></span>
                   <input 
                     type="text" 
                     class="form-control" 
@@ -42,7 +42,7 @@
               </div>
               <div class="col-md-2 d-flex align-items-end">
                 <button class="btn btn-outline-secondary w-100" @click="resetFilters">
-                  <i class="bi bi-x-circle me-1"></i> Limpiar
+                  <XCircle class="me-1" size="18" /> Limpiar
                 </button>
               </div>
             </div>
@@ -75,7 +75,7 @@
               <p class="mt-2 text-muted">Cargando datos de consumo...</p>
             </div>
             <div v-else-if="filteredConsumptions.length === 0" class="p-5 text-center">
-              <i class="bi bi-receipt text-muted display-4"></i>
+              <Receipt class="text-muted" size="48" />
               <p class="mt-3 text-muted">No se encontraron consumos con los filtros seleccionados</p>
               <button class="btn btn-outline-primary mt-2" @click="resetFilters">
                 Limpiar filtros
@@ -85,6 +85,7 @@
               <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
                   <tr>
+                    <th scope="col" class="border-0">N° Factura</th>
                     <th scope="col" class="border-0">Cliente</th>
                     <th scope="col" class="border-0" v-if="authStore.isSuperAdmin">Negocio</th>
                     <th scope="col" class="border-0">Fecha</th>
@@ -96,13 +97,20 @@
                 <tbody>
                   <tr v-for="consumption in filteredConsumptions" :key="consumption.id">
                     <td>
+                      <span class="badge bg-light text-dark">
+                        <FileText class="me-1" size="14" /> {{ consumption.invoiceNumber || 'N/D' }}
+                      </span>
+                    </td>
+                    <td>
                       <div class="d-flex align-items-center">
                         <div class="avatar-circle bg-primary bg-opacity-10 text-primary me-3">
                           {{ getInitials(consumption.customerName) }}
                         </div>
                         <div>
-                          <h6 class="mb-0">{{ consumption.customerName || 'Cliente' }}</h6>
-                          <small class="text-muted">{{ consumption.phoneNumber }}</small>
+                          <router-link :to="`/admin/clients/${consumption.phoneNumber}`" class="text-decoration-none">
+                            <h6 class="mb-0">{{ consumption.customerName || 'Cliente' }}</h6>
+                            <small class="text-muted">{{ consumption.phoneNumber }}</small>
+                          </router-link>
                         </div>
                       </div>
                     </td>
@@ -125,22 +133,32 @@
                         <button 
                           class="btn btn-outline-info" 
                           @click="viewReceiptDetails(consumption)"
+                          title="Ver recibo"
                         >
-                          <i class="bi bi-receipt"></i>
+                          <Receipt size="16" />
                         </button>
                         <button 
                           v-if="!consumption.verified"
                           class="btn btn-outline-success" 
                           @click="verifyReceipt(consumption)"
+                          title="Verificar recibo"
                         >
-                          <i class="bi bi-check-lg"></i>
+                          <CheckCircle size="16" />
                         </button>
                         <button 
                           class="btn btn-outline-primary" 
                           @click="viewLoyaltyCard(consumption)"
+                          title="Ver tarjeta de fidelidad"
                         >
-                          <i class="bi bi-credit-card"></i>
+                          <CreditCard size="16" />
                         </button>
+                        <router-link 
+                          :to="`/admin/clients/${consumption.phoneNumber}`" 
+                          class="btn btn-outline-secondary"
+                          title="Ver detalle del cliente"
+                        >
+                          <User size="16" />
+                        </router-link>
                       </div>
                     </td>
                   </tr>
@@ -227,6 +245,9 @@ import { ref, computed, onMounted } from 'vue';
 import { collection, getDocs, doc, updateDoc, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useAuthStore } from '@/stores/auth';
+
+// Importar componentes de Lucide
+import { Search, XCircle, Receipt, CheckCircle, CreditCard, FileText, User } from 'lucide-vue-next';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -269,24 +290,50 @@ async function loadData() {
     }
     
     // Cargar consumos según el rol
-    let consumptionsQuery;
-    
     if (authStore.isSuperAdmin) {
-      // Super admin ve todos los consumos
-      consumptionsQuery = collection(db, 'business_purchases');
+      // Super admin ve todos los consumos de todos los negocios
+      // Primero obtenemos todos los negocios
+      const allPurchases = [];
+      
+      // Para cada negocio, obtenemos sus compras
+      for (const business of businesses.value) {
+        try {
+          const businessPurchasesRef = collection(db, 'business_purchases', business.id, 'purchases');
+          const purchasesSnapshot = await getDocs(businessPurchasesRef);
+          
+          // Agregamos cada compra con su información de negocio
+          const businessPurchases = purchasesSnapshot.docs.map(doc => ({
+            id: doc.id,
+            businessId: business.id,
+            businessName: business.name,
+            ...doc.data(),
+            date: doc.data().date instanceof Timestamp ? doc.data().date.toDate() : new Date(doc.data().date)
+          }));
+          
+          allPurchases.push(...businessPurchases);
+        } catch (err) {
+          console.error(`Error al cargar compras del negocio ${business.id}:`, err);
+        }
+      }
+      
+      // Asignamos todas las compras a la variable reactiva
+      consumptions.value = allPurchases;
+      
     } else if (authStore.isBusinessAdmin) {
       // Business admin solo ve los de su negocio
       const businessId = authStore.user.businessId;
-      consumptionsQuery = collection(db, 'business_purchases', businessId, 'purchases');
+      const businessPurchasesRef = collection(db, 'business_purchases', businessId, 'purchases');
+      const purchasesSnapshot = await getDocs(businessPurchasesRef);
+      
+      consumptions.value = purchasesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        businessId: businessId,
+        ...doc.data(),
+        date: doc.data().date instanceof Timestamp ? doc.data().date.toDate() : new Date(doc.data().date)
+      }));
     }
     
-    const consumptionsSnapshot = await getDocs(consumptionsQuery);
-    consumptions.value = consumptionsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      businessId: doc.ref.parent.parent?.id || authStore.user.businessId,
-      ...doc.data(),
-      date: doc.data().date instanceof Timestamp ? doc.data().date.toDate() : new Date(doc.data().date)
-    }));
+    console.log('Consumos cargados:', consumptions.value.length);
     
   } catch (error) {
     console.error('Error al cargar datos:', error);

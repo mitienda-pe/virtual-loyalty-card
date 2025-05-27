@@ -77,6 +77,29 @@ const routes = [
         component: () => import("@/views/admin/ClientConsumption.vue"),
         meta: { requiresSuperAdmin: true },
       },
+      // Ruta para lista de clientes
+      {
+        path: "clients",
+        name: "ClientList",
+        component: () => import("@/views/admin/ClientList.vue"),
+        meta: { requiresSuperAdmin: true },
+      },
+      // Ruta para detalle de cliente con sus consumos
+      {
+        path: "clients/:phoneNumber",
+        name: "ClientDetail",
+        component: () => import("@/views/admin/ClientDetail.vue"),
+        props: true,
+        meta: { requiresSuperAdmin: true },
+      },
+      // Ruta para editar cliente
+      {
+        path: "clients/:phoneNumber/edit",
+        name: "ClientEdit",
+        component: () => import("@/views/admin/ClientForm.vue"),
+        props: true,
+        meta: { requiresSuperAdmin: true },
+      },
       // Ruta para configuración de WhatsApp (SuperAdmin)
       {
         path: "whatsapp",

@@ -1,44 +1,6 @@
 <!-- src/views/admin/UserList.vue -->
 <template>
   <div class="container-fluid">
-    <div class="row mb-4">
-      <div class="col-12">
-        <div class="card border-0 shadow-sm">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center">
-              <div>
-                <h1 class="h3 mb-0">Usuarios</h1>
-                <p class="text-muted">Gestión de usuarios del sistema</p>
-              </div>
-              <div>
-                <router-link to="/admin/users/new" class="btn btn-primary">
-                  <i class="bi bi-person-plus me-1"></i> Agregar Admin
-                </router-link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Información sobre registro de clientes -->
-    <div class="row mb-4">
-      <div class="col-12">
-        <div class="card border-0 shadow-sm bg-light">
-          <div class="card-body">
-            <div class="d-flex align-items-center">
-              <div class="rounded-circle bg-info bg-opacity-10 p-3 me-3">
-                <i class="bi bi-whatsapp text-info fs-4"></i>
-              </div>
-              <div>
-                <h5 class="mb-1">Registro de Clientes por WhatsApp</h5>
-                <p class="mb-0">Los clientes se registran automáticamente al enviar fotos de sus comprobantes de pago al número de WhatsApp. No es necesario crear cuentas manualmente para ellos.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- Filtros -->
     <div class="row mb-4">
@@ -49,14 +11,9 @@
               <div class="col-md-4">
                 <label for="searchInput" class="form-label">Buscar</label>
                 <div class="input-group">
-                  <span class="input-group-text"><i class="bi bi-search"></i></span>
-                  <input 
-                    type="text" 
-                    class="form-control" 
-                    id="searchInput" 
-                    v-model="searchTerm" 
-                    placeholder="Buscar por nombre, email o teléfono"
-                  >
+                  <span class="input-group-text"><Search size="18" /></span>
+                  <input type="text" class="form-control" id="searchInput" v-model="searchTerm"
+                    placeholder="Buscar por nombre, email o teléfono">
                 </div>
               </div>
               <div class="col-md-3">
@@ -78,7 +35,7 @@
               </div>
               <div class="col-md-2 d-flex align-items-end">
                 <button class="btn btn-outline-secondary w-100" @click="resetFilters">
-                  <i class="bi bi-x-circle me-1"></i> Limpiar
+                  <XCircle class="me-1" size="18" /> Limpiar
                 </button>
               </div>
             </div>
@@ -99,7 +56,7 @@
               <p class="mt-2 text-muted">Cargando usuarios...</p>
             </div>
             <div v-else-if="filteredUsers.length === 0" class="p-5 text-center">
-              <i class="bi bi-people text-muted display-4"></i>
+              <Users class="text-muted" size="48" />
               <p class="mt-3 text-muted">No se encontraron usuarios con los filtros seleccionados</p>
               <button class="btn btn-outline-primary mt-2" @click="resetFilters">
                 Limpiar filtros
@@ -126,8 +83,9 @@
                         </div>
                         <div>
                           <h6 class="mb-0">{{ user.displayName || 'Sin nombre' }}</h6>
-                          <small v-if="user.registrationType && user.role === 'business-client'" class="badge bg-light text-dark">
-                            <i class="bi bi-whatsapp text-success me-1"></i> Registrado por WhatsApp
+                          <small v-if="user.registrationType && user.role === 'business-client'"
+                            class="badge bg-light text-dark">
+                            <MessageCircle class="text-success me-1" size="14" /> Registrado por WhatsApp
                           </small>
                         </div>
                       </div>
@@ -136,7 +94,7 @@
                       <div>
                         <div v-if="user.email">{{ user.email }}</div>
                         <div v-if="user.phone" class="text-success">
-                          <i class="bi bi-whatsapp me-1"></i> {{ user.phone }}
+                          <MessageCircle class="me-1" size="14" /> {{ user.phone }}
                         </div>
                       </div>
                     </td>
@@ -155,40 +113,25 @@
                     </td>
                     <td class="text-end">
                       <div class="btn-group btn-group-sm">
-                        <router-link 
-                          v-if="user.role !== 'business-client'" 
-                          :to="`/admin/users/${user.id}/edit`" 
-                          class="btn btn-outline-primary"
-                        >
-                          <i class="bi bi-pencil"></i>
+                        <router-link v-if="user.role !== 'business-client'" :to="`/admin/users/${user.id}/edit`"
+                          class="btn btn-outline-primary">
+                          <Pencil size="16" />
                         </router-link>
-                        <button 
-                          class="btn" 
-                          :class="user.disabled ? 'btn-outline-success' : 'btn-outline-danger'"
-                          @click="toggleUserStatus(user)"
-                        >
-                          <i class="bi" :class="user.disabled ? 'bi-check-circle' : 'bi-x-circle'"></i>
+                        <button class="btn" :class="user.disabled ? 'btn-outline-success' : 'btn-outline-danger'"
+                          @click="toggleUserStatus(user)">
+                          <component :is="user.disabled ? CheckCircle : XCircleIcon" size="16" />
                         </button>
-                        <button 
-                          v-if="user.role !== 'business-client'"
-                          class="btn btn-outline-secondary" 
-                          @click="resetPassword(user)"
-                        >
-                          <i class="bi bi-key"></i>
+                        <button v-if="user.role !== 'business-client'" class="btn btn-outline-secondary"
+                          @click="resetPassword(user)">
+                          <Key size="16" />
                         </button>
-                        <button 
-                          v-if="user.role === 'business-client'"
-                          class="btn btn-outline-info" 
-                          @click="viewClientDetails(user)"
-                        >
-                          <i class="bi bi-eye"></i>
+                        <button v-if="user.role === 'business-client'" class="btn btn-outline-info"
+                          @click="viewClientDetails(user)">
+                          <Eye size="16" />
                         </button>
-                        <button 
-                          v-if="user.role === 'business-client'"
-                          class="btn btn-outline-success" 
-                          @click="sendWhatsAppMessage(user)"
-                        >
-                          <i class="bi bi-whatsapp"></i>
+                        <button v-if="user.role === 'business-client'" class="btn btn-outline-success"
+                          @click="sendWhatsAppMessage(user)">
+                          <MessageCircle size="16" />
                         </button>
                       </div>
                     </td>
@@ -203,7 +146,7 @@
             </div>
             <div>
               <button class="btn btn-sm btn-outline-primary" @click="loadUsers">
-                <i class="bi bi-arrow-clockwise me-1"></i> Actualizar
+                <RefreshCw class="me-1" size="14" /> Actualizar
               </button>
             </div>
           </div>
@@ -231,7 +174,8 @@
     </div>
 
     <!-- Modal de detalles del cliente -->
-    <div class="modal fade" id="clientDetailsModal" tabindex="-1" aria-labelledby="clientDetailsModalLabel" aria-hidden="true">
+    <div class="modal fade" id="clientDetailsModal" tabindex="-1" aria-labelledby="clientDetailsModalLabel"
+      aria-hidden="true">
       <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header">
@@ -277,7 +221,7 @@
                       <td class="text-center">{{ formatDate(business.lastTransaction) }}</td>
                       <td class="text-center">
                         <button class="btn btn-sm btn-outline-primary" @click="viewLoyaltyCard(selectedClient, business)">
-                          <i class="bi bi-credit-card me-1"></i> Ver tarjeta
+                          <CreditCard class="me-1" size="14" /> Ver tarjeta
                         </button>
                       </td>
                     </tr>
@@ -320,13 +264,8 @@
               </div>
               <div class="mb-3">
                 <label for="whatsappMessage" class="form-label">Mensaje</label>
-                <textarea 
-                  class="form-control" 
-                  id="whatsappMessage" 
-                  v-model="whatsappMessage" 
-                  rows="5" 
-                  required
-                ></textarea>
+                <textarea class="form-control" id="whatsappMessage" v-model="whatsappMessage" rows="5"
+                  required></textarea>
               </div>
             </div>
           </div>
@@ -347,6 +286,9 @@ import { ref, computed, onMounted } from 'vue';
 import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { useAuthStore } from '@/stores/auth';
+
+// Importar componentes de Lucide
+import { Search, XCircle, Users, MessageCircle, Pencil, CheckCircle, XCircle as XCircleIcon, Key, Eye, RefreshCw, CreditCard } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const users = ref([]);
@@ -377,19 +319,19 @@ const whatsappMessage = ref('');
 const filteredUsers = computed(() => {
   return users.value.filter(user => {
     // Filtro de búsqueda
-    const searchMatch = !searchTerm.value || 
+    const searchMatch = !searchTerm.value ||
       (user.displayName && user.displayName.toLowerCase().includes(searchTerm.value.toLowerCase())) ||
       (user.email && user.email.toLowerCase().includes(searchTerm.value.toLowerCase())) ||
       (user.phone && user.phone.includes(searchTerm.value));
-    
+
     // Filtro de rol
     const roleMatch = !roleFilter.value || user.role === roleFilter.value;
-    
+
     // Filtro de estado
-    const statusMatch = !statusFilter.value || 
+    const statusMatch = !statusFilter.value ||
       (statusFilter.value === 'active' && !user.disabled) ||
       (statusFilter.value === 'inactive' && user.disabled);
-    
+
     return searchMatch && roleMatch && statusMatch;
   });
 });
@@ -415,12 +357,12 @@ async function loadUsers() {
 function toggleUserStatus(user) {
   selectedUser = user;
   const newStatus = !user.disabled;
-  
+
   modalTitle.value = newStatus ? 'Desactivar Usuario' : 'Activar Usuario';
-  modalMessage.value = newStatus 
-    ? `¿Estás seguro de que deseas desactivar al usuario ${user.displayName || user.phone || user.email}?` 
+  modalMessage.value = newStatus
+    ? `¿Estás seguro de que deseas desactivar al usuario ${user.displayName || user.phone || user.email}?`
     : `¿Estás seguro de que deseas activar al usuario ${user.displayName || user.phone || user.email}?`;
-  
+
   currentAction = 'toggleStatus';
   confirmModal.show();
 }
@@ -444,7 +386,7 @@ async function viewClientDetails(user) {
     lastActivity: user.lastLogin || user.createdAt,
     businesses: []
   };
-  
+
   // En una aplicación real, cargaríamos estos datos desde Firestore
   // Por ahora, usaremos datos de ejemplo
   selectedClient.value.businesses = [
@@ -463,10 +405,10 @@ async function viewClientDetails(user) {
       lastTransaction: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000) // 10 días atrás
     }
   ];
-  
+
   selectedClient.value.totalTransactions = selectedClient.value.businesses.reduce((total, b) => total + b.transactions, 0);
   selectedClient.value.businessesCount = selectedClient.value.businesses.length;
-  
+
   clientDetailsModal.show();
 }
 
@@ -476,7 +418,7 @@ function viewLoyaltyCard(client, business) {
   // Por ejemplo: /business-slug/phone-number
   const businessSlug = business.id; // En una aplicación real, usaríamos el slug del negocio
   const phoneNumber = client.phone.replace(/\+/g, '');
-  
+
   window.open(`/${businessSlug}/${phoneNumber}`, '_blank');
 }
 
@@ -491,9 +433,9 @@ function sendWhatsAppMessage(user) {
 // Aplicar plantilla de mensaje
 function applyTemplate() {
   if (!selectedTemplate.value || !selectedClient.value) return;
-  
+
   const clientName = selectedClient.value.displayName || 'estimado cliente';
-  
+
   switch (selectedTemplate.value) {
     case 'welcome':
       whatsappMessage.value = `¡Hola ${clientName}! Bienvenido a nuestro programa de fidelidad. Puedes consultar tus puntos y premios disponibles enviando un mensaje con la palabra "puntos".`;
@@ -516,7 +458,7 @@ function applyTemplate() {
 // Confirmar envío de mensaje por WhatsApp
 function confirmSendWhatsAppMessage() {
   if (!whatsappMessage.value || !selectedClient.value) return;
-  
+
   // En una aplicación real, aquí enviaríamos el mensaje a través de la API de WhatsApp
   alert(`Mensaje enviado a ${selectedClient.value.phone}: ${whatsappMessage.value}`);
   whatsappModal.hide();
@@ -525,20 +467,20 @@ function confirmSendWhatsAppMessage() {
 // Confirmar acción
 async function confirmAction() {
   if (!selectedUser) return;
-  
+
   try {
     if (currentAction === 'toggleStatus') {
       const newStatus = !selectedUser.disabled;
       await updateDoc(doc(db, 'users', selectedUser.id), {
         disabled: newStatus
       });
-      
+
       // Actualizar en la lista local
       const index = users.value.findIndex(u => u.id === selectedUser.id);
       if (index !== -1) {
         users.value[index].disabled = newStatus;
       }
-      
+
       alert(`Usuario ${newStatus ? 'desactivado' : 'activado'} correctamente`);
     } else if (currentAction === 'resetPassword') {
       // Aquí iría la lógica para resetear la contraseña
@@ -564,7 +506,7 @@ function resetFilters() {
 // Formatear fecha
 function formatDate(timestamp) {
   if (!timestamp) return 'Nunca';
-  
+
   const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
   return date.toLocaleDateString('es-ES', {
     day: '2-digit',
@@ -578,7 +520,7 @@ function formatDate(timestamp) {
 // Obtener iniciales
 function getInitials(name) {
   if (!name) return '?';
-  
+
   return name
     .split(' ')
     .map(part => part.charAt(0))
@@ -612,7 +554,7 @@ onMounted(() => {
   confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
   clientDetailsModal = new bootstrap.Modal(document.getElementById('clientDetailsModal'));
   whatsappModal = new bootstrap.Modal(document.getElementById('whatsappModal'));
-  
+
   // Cargar usuarios
   loadUsers();
 });

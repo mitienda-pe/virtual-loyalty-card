@@ -3,17 +3,6 @@
   <div class="dashboard">
     <!-- Dashboard de SuperAdmin -->
     <div v-if="authStore.isSuperAdmin">
-      <div class="row mb-4">
-        <div class="col-12">
-          <div class="card border-0 shadow-sm">
-            <div class="card-body">
-              <h1 class="h3 mb-0">Dashboard de SuperAdmin</h1>
-              <p class="text-muted">Bienvenido al panel de administración principal</p>
-            </div>
-          </div>
-        </div>
-      </div>
-      
       <div class="row">
         <div class="col-md-4 mb-4">
           <div class="card border-0 shadow-sm h-100">
@@ -24,7 +13,7 @@
                   <h2 class="display-6 mb-0">{{ stats.totalBusinesses }}</h2>
                 </div>
                 <div class="rounded-circle bg-primary bg-opacity-10 p-3">
-                  <i class="bi bi-building text-primary fs-4"></i>
+                  <Building class="text-primary" size="24" />
                 </div>
               </div>
               <div class="mt-3">
@@ -35,7 +24,7 @@
             </div>
           </div>
         </div>
-        
+
         <div class="col-md-4 mb-4">
           <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
@@ -45,7 +34,7 @@
                   <h2 class="display-6 mb-0">{{ stats.totalClients }}</h2>
                 </div>
                 <div class="rounded-circle bg-success bg-opacity-10 p-3">
-                  <i class="bi bi-people text-success fs-4"></i>
+                  <Users class="text-success" size="24" />
                 </div>
               </div>
               <div class="mt-3">
@@ -56,7 +45,7 @@
             </div>
           </div>
         </div>
-        
+
         <div class="col-md-4 mb-4">
           <div class="card border-0 shadow-sm h-100">
             <div class="card-body">
@@ -66,7 +55,7 @@
                   <h2 class="display-6 mb-0">{{ stats.totalTransactions }}</h2>
                 </div>
                 <div class="rounded-circle bg-info bg-opacity-10 p-3">
-                  <i class="bi bi-receipt text-info fs-4"></i>
+                  <Receipt class="text-info" size="24" />
                 </div>
               </div>
               <div class="mt-3">
@@ -78,7 +67,7 @@
           </div>
         </div>
       </div>
-      
+
       <div class="row">
         <div class="col-md-8 mb-4">
           <div class="card border-0 shadow-sm">
@@ -133,7 +122,7 @@
             </div>
           </div>
         </div>
-        
+
         <div class="col-md-4 mb-4">
           <div class="card border-0 shadow-sm h-100">
             <div class="card-header bg-white">
@@ -143,46 +132,56 @@
               <div class="mb-3">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   <span class="fw-bold">Estado de la API:</span>
-                  <span class="badge" :class="whatsappConfig.apiToken && whatsappConfig.appSecret ? 'bg-success' : 'bg-warning'">
+                  <span class="badge"
+                    :class="whatsappConfig.apiToken && whatsappConfig.appSecret ? 'bg-success' : 'bg-warning'">
                     {{ whatsappConfig.apiToken && whatsappConfig.appSecret ? 'Configurado' : 'Configuración incompleta' }}
                   </span>
                 </div>
-                <div class="alert" :class="whatsappConfig.apiToken && whatsappConfig.appSecret ? 'alert-info' : 'alert-warning'" mb-3>
+                <div class="alert"
+                  :class="whatsappConfig.apiToken && whatsappConfig.appSecret ? 'alert-info' : 'alert-warning'" mb-3>
                   <small>
-                    <i class="bi" :class="whatsappConfig.apiToken && whatsappConfig.appSecret ? 'bi-info-circle' : 'bi-exclamation-triangle'" me-1></i> 
-                    {{ whatsappConfig.apiToken && whatsappConfig.appSecret ? 
-                      'La API de WhatsApp está configurada correctamente.' : 
+                    <component 
+                      :is="whatsappConfig.apiToken && whatsappConfig.appSecret ? Info : AlertTriangle"
+                      size="14" class="me-1" />
+                    {{ whatsappConfig.apiToken && whatsappConfig.appSecret ?
+                      'La API de WhatsApp está configurada correctamente.' :
                       'Se requiere configurar el Token de API y el Secreto de la aplicación.' }}
                   </small>
                 </div>
               </div>
-              
+
               <div class="mb-3">
                 <h6>Webhook URL</h6>
                 <div class="input-group mb-2">
-                  <input type="text" class="form-control form-control-sm" value="https://us-central1-virtual-loyalty-card-e37c9.cloudfunctions.net/processWhatsAppAPI" readonly>
-                  <button class="btn btn-outline-secondary btn-sm" type="button" @click="copyToClipboard('https://us-central1-virtual-loyalty-card-e37c9.cloudfunctions.net/processWhatsAppAPI')">
-                    <i class="bi bi-clipboard"></i>
+                  <input type="text" class="form-control form-control-sm"
+                    value="https://us-central1-virtual-loyalty-card-e37c9.cloudfunctions.net/processWhatsAppAPI"
+                    readonly>
+                  <button class="btn btn-outline-secondary btn-sm" type="button"
+                    @click="copyToClipboard('https://us-central1-virtual-loyalty-card-e37c9.cloudfunctions.net/processWhatsAppAPI')">
+                    <Clipboard size="14" />
                   </button>
                 </div>
               </div>
-              
+
               <div class="mb-3">
                 <h6>Token de Verificación</h6>
                 <div class="input-group mb-2">
-                  <input type="text" class="form-control form-control-sm" value="38f7d5a1-b65c-4e9d-9f2d-ea9c21b7ca56" readonly>
-                  <button class="btn btn-outline-secondary btn-sm" type="button" @click="copyToClipboard('38f7d5a1-b65c-4e9d-9f2d-ea9c21b7ca56')">
-                    <i class="bi bi-clipboard"></i>
+                  <input type="text" class="form-control form-control-sm" value="38f7d5a1-b65c-4e9d-9f2d-ea9c21b7ca56"
+                    readonly>
+                  <button class="btn btn-outline-secondary btn-sm" type="button"
+                    @click="copyToClipboard('38f7d5a1-b65c-4e9d-9f2d-ea9c21b7ca56')">
+                    <Clipboard size="14" />
                   </button>
                 </div>
               </div>
-              
+
               <div class="mb-3">
                 <h6>ID del Teléfono</h6>
                 <div class="input-group mb-2">
                   <input type="text" class="form-control form-control-sm" value="108512615643697" readonly>
-                  <button class="btn btn-outline-secondary btn-sm" type="button" @click="copyToClipboard('108512615643697')">
-                    <i class="bi bi-clipboard"></i>
+                  <button class="btn btn-outline-secondary btn-sm" type="button"
+                    @click="copyToClipboard('108512615643697')">
+                    <Clipboard size="14" />
                   </button>
                 </div>
               </div>
@@ -190,14 +189,10 @@
               <div class="mb-3">
                 <h6>Token de API</h6>
                 <div class="input-group mb-2">
-                  <input 
-                    type="password" 
-                    class="form-control form-control-sm" 
-                    v-model="whatsappConfig.apiToken" 
-                    placeholder="Ingresa el token de API de WhatsApp"
-                  >
+                  <input type="password" class="form-control form-control-sm" v-model="whatsappConfig.apiToken"
+                    placeholder="Ingresa el token de API de WhatsApp">
                   <button class="btn btn-outline-secondary btn-sm" type="button" @click="toggleTokenVisibility">
-                    <i class="bi" :class="showToken ? 'bi-eye-slash' : 'bi-eye'"></i>
+                    <component :is="showToken ? EyeOff : Eye" size="14" />
                   </button>
                 </div>
                 <small class="text-muted">Token de acceso permanente para la API de WhatsApp</small>
@@ -206,29 +201,25 @@
               <div class="mb-3">
                 <h6>Secreto de la Aplicación</h6>
                 <div class="input-group mb-2">
-                  <input 
-                    type="password" 
-                    class="form-control form-control-sm" 
-                    v-model="whatsappConfig.appSecret" 
-                    placeholder="Ingresa el secreto de la aplicación"
-                  >
+                  <input type="password" class="form-control form-control-sm" v-model="whatsappConfig.appSecret"
+                    placeholder="Ingresa el secreto de la aplicación">
                   <button class="btn btn-outline-secondary btn-sm" type="button" @click="toggleSecretVisibility">
-                    <i class="bi" :class="showSecret ? 'bi-eye-slash' : 'bi-eye'"></i>
+                    <component :is="showSecret ? EyeOff : Eye" size="14" />
                   </button>
                 </div>
                 <small class="text-muted">Secreto de la aplicación de WhatsApp</small>
               </div>
-              
+
               <div class="mt-3">
                 <button class="btn btn-primary w-100" @click="saveWhatsAppConfig">
-                  <i class="bi bi-save me-1"></i> Guardar Configuración
+                  <Save class="me-1" size="14" /> Guardar Configuración
                 </button>
               </div>
             </div>
           </div>
         </div>
       </div>
-      
+
       <div class="row">
         <div class="col-md-6 mb-4">
           <div class="card border-0 shadow-sm">
@@ -257,7 +248,7 @@
             </div>
           </div>
         </div>
-        
+
         <div class="col-md-6 mb-4">
           <div class="card border-0 shadow-sm">
             <div class="card-header bg-white">
@@ -283,20 +274,22 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Dashboard de Business Admin -->
     <div v-else-if="authStore.isBusinessAdmin">
       <div class="alert alert-info">
-        <i class="bi bi-info-circle me-2"></i> Por favor, utiliza el menú de navegación para acceder a las funciones de administración de tu negocio.
+        <Info class="me-2" /> Por favor, utiliza el menú de navegación para acceder a las funciones de
+        administración de tu negocio.
       </div>
-      
+
       <router-link to="/admin/business/dashboard" class="btn btn-primary">
         Ir al Dashboard de mi Negocio
       </router-link>
     </div>
-    
+
     <!-- Modal para configuración de WhatsApp -->
-    <div class="modal fade" id="whatsappConfigModal" tabindex="-1" aria-labelledby="whatsappConfigModalLabel" aria-hidden="true">
+    <div class="modal fade" id="whatsappConfigModal" tabindex="-1" aria-labelledby="whatsappConfigModalLabel"
+      aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
@@ -305,22 +298,25 @@
           </div>
           <div class="modal-body">
             <div class="alert alert-info mb-3">
-              <i class="bi bi-info-circle me-2"></i>
-              <strong>Registro automático de clientes:</strong> Los clientes se registran automáticamente al enviar fotos de sus comprobantes de pago a nuestro número de WhatsApp.
+              <Info class="me-2" />
+              <strong>Registro automático de clientes:</strong> Los clientes se registran automáticamente al enviar
+              fotos de sus comprobantes de pago a nuestro número de WhatsApp.
             </div>
-            
+
             <form @submit.prevent="saveWhatsAppConfig">
               <div class="mb-3">
                 <label for="whatsappApiToken" class="form-label">Token de API de WhatsApp</label>
-                <input type="text" class="form-control" id="whatsappApiToken" v-model="whatsappConfig.apiToken" required>
+                <input type="text" class="form-control" id="whatsappApiToken" v-model="whatsappConfig.apiToken"
+                  required>
                 <div class="form-text">Token de acceso permanente para la API de WhatsApp</div>
               </div>
               <div class="mb-3">
                 <label for="whatsappAppSecret" class="form-label">Secreto de la Aplicación</label>
-                <input type="text" class="form-control" id="whatsappAppSecret" v-model="whatsappConfig.appSecret" required>
+                <input type="text" class="form-control" id="whatsappAppSecret" v-model="whatsappConfig.appSecret"
+                  required>
                 <div class="form-text">Secreto de la aplicación de WhatsApp</div>
               </div>
-              
+
               <div class="mb-3">
                 <label for="messageTemplates" class="form-label">Plantillas de mensajes</label>
                 <div class="card">
@@ -334,34 +330,33 @@
                       </div>
                       <textarea class="form-control form-control-sm" v-model="template.content" rows="2"></textarea>
                     </div>
-                    
+
                     <button type="button" class="btn btn-sm btn-outline-primary w-100" @click="addTemplate">
                       <i class="bi bi-plus-circle me-1"></i> Agregar plantilla
                     </button>
                   </div>
                 </div>
               </div>
-              
+
               <div class="mb-3">
                 <label class="form-label">Configuración de respuestas automáticas</label>
                 <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" id="autoReplyEnabled" v-model="whatsappConfig.autoReplyEnabled">
+                  <input class="form-check-input" type="checkbox" id="autoReplyEnabled"
+                    v-model="whatsappConfig.autoReplyEnabled">
                   <label class="form-check-label" for="autoReplyEnabled">Habilitar respuestas automáticas</label>
                 </div>
                 <div v-if="whatsappConfig.autoReplyEnabled">
-                  <textarea 
-                    class="form-control" 
-                    v-model="whatsappConfig.autoReplyMessage" 
-                    rows="3" 
-                    placeholder="Mensaje de respuesta automática"
-                  ></textarea>
-                  <div class="form-text">Este mensaje se enviará automáticamente cuando un cliente envíe un comprobante de pago.</div>
+                  <textarea class="form-control" v-model="whatsappConfig.autoReplyMessage" rows="3"
+                    placeholder="Mensaje de respuesta automática"></textarea>
+                  <div class="form-text">Este mensaje se enviará automáticamente cuando un cliente envíe un comprobante
+                    de pago.</div>
                 </div>
               </div>
-              
+
               <div class="d-grid">
                 <button type="submit" class="btn btn-primary" :disabled="savingConfig">
-                  <span v-if="savingConfig" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                  <span v-if="savingConfig" class="spinner-border spinner-border-sm me-2" role="status"
+                    aria-hidden="true"></span>
                   Guardar Configuración
                 </button>
               </div>
@@ -370,9 +365,10 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Modal para enviar notificación -->
-    <div class="modal fade" id="sendNotificationModal" tabindex="-1" aria-labelledby="sendNotificationModalLabel" aria-hidden="true">
+    <div class="modal fade" id="sendNotificationModal" tabindex="-1" aria-labelledby="sendNotificationModalLabel"
+      aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
@@ -395,11 +391,13 @@
               </div>
               <div class="mb-3">
                 <label for="notificationMessage" class="form-label">Mensaje</label>
-                <textarea class="form-control" id="notificationMessage" v-model="notification.message" rows="3" required></textarea>
+                <textarea class="form-control" id="notificationMessage" v-model="notification.message" rows="3"
+                  required></textarea>
               </div>
               <div class="d-grid">
                 <button type="submit" class="btn btn-primary" :disabled="sendingNotification">
-                  <span v-if="sendingNotification" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                  <span v-if="sendingNotification" class="spinner-border spinner-border-sm me-2" role="status"
+                    aria-hidden="true"></span>
                   Enviar Notificación
                 </button>
               </div>
@@ -408,9 +406,10 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Modal para configuración del sistema -->
-    <div class="modal fade" id="systemSettingsModal" tabindex="-1" aria-labelledby="systemSettingsModalLabel" aria-hidden="true">
+    <div class="modal fade" id="systemSettingsModal" tabindex="-1" aria-labelledby="systemSettingsModalLabel"
+      aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
@@ -428,12 +427,14 @@
                 <input type="file" class="form-control" id="systemLogo" @change="handleLogoChange" accept="image/*">
               </div>
               <div class="mb-3 form-check">
-                <input type="checkbox" class="form-check-input" id="enableRegistration" v-model="systemSettings.enableRegistration">
+                <input type="checkbox" class="form-check-input" id="enableRegistration"
+                  v-model="systemSettings.enableRegistration">
                 <label class="form-check-label" for="enableRegistration">Permitir registro de usuarios</label>
               </div>
               <div class="d-grid">
                 <button type="submit" class="btn btn-primary" :disabled="savingSettings">
-                  <span v-if="savingSettings" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                  <span v-if="savingSettings" class="spinner-border spinner-border-sm me-2" role="status"
+                    aria-hidden="true"></span>
                   Guardar Configuración
                 </button>
               </div>
@@ -450,6 +451,9 @@ import { ref, onMounted } from 'vue';
 import { collection, getDocs, query, where, orderBy, limit, doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuthStore } from '@/stores/auth';
 import { db } from '@/firebase';
+
+// Importar componentes de Lucide
+import { Building, Users, Receipt, Info, AlertTriangle, Clipboard, EyeOff, Eye, Save, MessageCircle } from 'lucide-vue-next';
 
 const authStore = useAuthStore();
 const loading = ref(true);
@@ -504,11 +508,11 @@ onMounted(async () => {
   whatsappConfigModal = new bootstrap.Modal(document.getElementById('whatsappConfigModal'));
   sendNotificationModal = new bootstrap.Modal(document.getElementById('sendNotificationModal'));
   systemSettingsModal = new bootstrap.Modal(document.getElementById('systemSettingsModal'));
-  
+
   if (authStore.isSuperAdmin) {
     await loadSuperAdminData();
   }
-  
+
   loading.value = false;
 });
 
@@ -516,16 +520,16 @@ async function loadSuperAdminData() {
   try {
     // Cargar estadísticas
     await loadStats();
-    
+
     // Cargar negocios recientes
     await loadRecentBusinesses();
-    
+
     // Cargar actividades recientes
     await loadRecentActivities();
-    
+
     // Cargar configuración de WhatsApp
     await loadWhatsAppConfig();
-    
+
     // Cargar configuración del sistema
     await loadSystemSettings();
   } catch (error) {
@@ -538,7 +542,7 @@ async function loadStats() {
     // Contar negocios
     const businessesSnapshot = await getDocs(collection(db, "businesses"));
     stats.value.totalBusinesses = businessesSnapshot.size;
-    
+
     // Contar clientes (usuarios con rol business-client)
     const clientsQuery = query(
       collection(db, "users"),
@@ -546,11 +550,11 @@ async function loadStats() {
     );
     const clientsSnapshot = await getDocs(clientsQuery);
     stats.value.totalClients = clientsSnapshot.size;
-    
+
     // Contar transacciones
     const transactionsSnapshot = await getDocs(collection(db, "transactions"));
     stats.value.totalTransactions = transactionsSnapshot.size;
-    
+
     // Contar premios
     const rewardsSnapshot = await getDocs(collection(db, "rewards"));
     stats.value.totalRewards = rewardsSnapshot.size;
@@ -566,16 +570,16 @@ async function loadRecentBusinesses() {
       orderBy("createdAt", "desc"),
       limit(5)
     );
-    
+
     const snapshot = await getDocs(businessesQuery);
-    
+
     // Obtener información adicional de cada negocio
     const businessesWithAdminInfo = await Promise.all(snapshot.docs.map(async (docSnap) => {
       const business = {
         id: docSnap.id,
         ...docSnap.data()
       };
-      
+
       // Si el negocio tiene un adminId, obtener su email
       if (business.adminId) {
         try {
@@ -587,10 +591,10 @@ async function loadRecentBusinesses() {
           console.error("Error al obtener datos del administrador:", error);
         }
       }
-      
+
       return business;
     }));
-    
+
     recentBusinesses.value = businessesWithAdminInfo;
   } catch (error) {
     console.error("Error al cargar negocios recientes:", error);
@@ -677,7 +681,7 @@ function showSystemSettingsModal() {
 
 async function saveWhatsAppConfig() {
   savingConfig.value = true;
-  
+
   try {
     await setDoc(doc(db, "system", "whatsapp_config"), {
       apiToken: whatsappConfig.value.apiToken,
@@ -687,7 +691,7 @@ async function saveWhatsAppConfig() {
       templates: whatsappConfig.value.templates,
       updatedAt: serverTimestamp()
     });
-    
+
     alert("Configuración de WhatsApp guardada exitosamente.");
     if (whatsappConfigModal) {
       whatsappConfigModal.hide();
@@ -702,13 +706,13 @@ async function saveWhatsAppConfig() {
 
 async function sendNotification() {
   sendingNotification.value = true;
-  
+
   try {
     // Aquí iría la lógica para enviar notificaciones
     // Por ahora, solo simularemos el proceso
-    
+
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     alert("Notificación enviada exitosamente.");
     sendNotificationModal.hide();
   } catch (error) {
@@ -721,13 +725,13 @@ async function sendNotification() {
 
 async function saveSystemSettings() {
   savingSettings.value = true;
-  
+
   try {
     // Aquí iría la lógica para guardar la configuración del sistema
     // Por ahora, solo simularemos el proceso
-    
+
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     alert("Configuración del sistema guardada exitosamente.");
     systemSettingsModal.hide();
   } catch (error) {
@@ -763,7 +767,7 @@ function copyToClipboard(text) {
 
 function formatDate(timestamp) {
   if (!timestamp) return 'Fecha desconocida';
-  
+
   const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
   return date.toLocaleDateString('es-ES', {
     day: '2-digit',

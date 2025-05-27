@@ -130,31 +130,34 @@ async function processImageMessage(
       const extractedData = extractRUCAndAmount(extractedText);
       console.log("📊 Datos extraídos:", JSON.stringify(extractedData, null, 2));
 
-      // Verificar si tenemos el RUC y monto necesarios
-      if (!extractedData.ruc || !extractedData.amount) {
-        console.log("❌ Información insuficiente en el comprobante");
+      // Verificar si tenemos el RUC, monto y número de comprobante necesarios
+      if (!extractedData.ruc || !extractedData.amount || !extractedData.invoiceId) {
+        console.log("❌ Información insuficiente en el comprobante (RUC, monto o número de comprobante)");
         
         // Almacenar la imagen para análisis posterior, incluso si falta información
         try {
           await storeReceiptImage(
             imageBuffer,
-            "unidentified", // No tenemos businessSlug aún
-            user.phone,
-            `unprocessed_${Date.now()}`
+            "unidentified", // No tenemos RUC
+            normalizedPhone,
+            new Date().toISOString(),
+            "missing_ruc_amount_or_invoiceId"
           );
-          console.log("📸 Imagen almacenada para análisis posterior");
-        } catch (storageError) {
-          console.error("⚠️ Error almacenando imagen no procesada:", storageError.message);
-          // No interrumpimos el flujo por un error de almacenamiento
+        } catch (imgErr) {
+          console.error("Error almacenando imagen sin RUC/monto/comprobante:", imgErr);
         }
-        
+
+        let missingFields = [];
+        if (!extractedData.ruc) missingFields.push('RUC');
+        if (!extractedData.amount) missingFields.push('monto');
+        if (!extractedData.invoiceId) missingFields.push('número de comprobante');
+
         await sendWhatsAppMessage(
-          user.phone,
-          "No pudimos identificar correctamente la información del comprobante. Por favor, asegúrate de que la imagen sea clara y contenga el RUC y monto total.",
+          normalizedPhone,
+          `No se pudo identificar ${missingFields.join(', ')} en tu comprobante. Por favor, asegúrate de que la imagen sea legible y que el comprobante sea válido.`,
           phoneNumberId,
           apiToken
         );
-        clearTimeout(processingTimeout); // Limpiar el timeout
         return;
       }
 
@@ -261,7 +264,7 @@ async function processImageMessage(
         receiptImageUrl, // Ahora pasamos la URL de la imagen almacenada
         {
           ruc: extractedData.ruc,
-          invoiceNumber: extractedData.invoiceId,
+          invoiceNumber: extractedData.invoiceNumber,
           businessName: extractedData.businessName,
           address: extractedData.address,
           customerName: user.name || "Cliente",

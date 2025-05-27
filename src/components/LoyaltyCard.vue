@@ -41,7 +41,7 @@
                 <h1 class="text-3xl font-bold text-gray-900">{{ business.name }}</h1>
                 <p class="text-gray-600 mt-2">{{ business.description }}</p>
                 <h2 class="text-lg text-gray-600 mt-4">
-                    Tarjeta de Cliente Frecuente perteneciente a
+                    Tarjeta de Cliente Frecuente
                 </h2>
                 <p class="text-gray-800 font-semibold mt-1">{{ phone }}</p>
             </div>
@@ -104,7 +104,7 @@
 
         <!-- Footer -->
         <div class="mt-6 mb-8 text-center text-gray-500 text-sm">
-            Powered by Tiendas Virtuales Latinoamérica SAC
+            Powered by <strong><a href="https://asiduo.club" target="_blank">Asiduo.club</a></strong>
         </div>
     </div>
 </template>
