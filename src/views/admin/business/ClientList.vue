@@ -447,6 +447,9 @@ onMounted(async () => {
 });
 
 async function loadClients() {
+  // DEBUG: Confirmar ejecución de loadClients
+  alert('[DEBUG] Ejecutando loadClients. businessId: ' + businessId.value);
+  console.log('[DEBUG] Ejecutando loadClients. businessId:', businessId.value);
   // DEBUG: Mostrar businessId actual
   console.log('[CLIENTES] businessId usado para query:', businessId.value);
   try {
