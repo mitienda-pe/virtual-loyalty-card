@@ -46,7 +46,6 @@
               <thead>
                 <tr>
                   <th>Cliente</th>
-                  <th>Email</th>
                   <th>Teléfono</th>
                   <th>Puntos</th>
                   <th>Nivel</th>
@@ -59,32 +58,29 @@
                   <td>
                     <div class="d-flex align-items-center">
                       <div class="avatar-circle me-2">
-                        {{ getInitials(client.name || client.email || 'Usuario') }}
+                        {{ getInitials(client.name || client.phoneNumber || 'Usuario') }}
                       </div>
                       <div>{{ client.name || 'Sin nombre' }}</div>
                     </div>
                   </td>
-                  <td>{{ client.email || 'Sin email' }}</td>
-                  <td>{{ client.phone || 'Sin teléfono' }}</td>
+                  <td>{{ client.phoneNumber || client.phone || 'Sin teléfono' }}</td>
                   <td>{{ client.points || 0 }}</td>
                   <td>
                     <span :class="`badge ${getLevelBadgeClass(client.points || 0)}`">
                       {{ calculateLevel(client.points || 0) }}
                     </span>
                   </td>
-                  <td>{{ formatDate(client.createdAt) }}</td>
+                  <td>{{ formatDate(client.firstVisit || client.createdAt) }}</td>
                   <td>
-                    <div class="btn-group">
-                      <button class="btn btn-sm btn-outline-primary" @click="viewClientDetails(client)">
-                        <i class="bi bi-eye"></i>
-                      </button>
-                      <button class="btn btn-sm btn-outline-success" @click="showAddPointsModal(client)">
-                        <i class="bi bi-plus-circle"></i>
-                      </button>
-                      <button class="btn btn-sm btn-outline-danger" @click="showRemovePointsModal(client)">
-                        <i class="bi bi-dash-circle"></i>
-                      </button>
-                    </div>
+                    <button class="btn btn-sm btn-outline-primary me-1" @click="viewClientDetails(client)">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-success me-1" @click="addPoints(client)">
+                      <i class="bi bi-plus-circle"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" @click="removePoints(client)">
+                      <i class="bi bi-dash-circle"></i>
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -453,41 +449,31 @@ async function loadClients() {
     const clientsSnapshot = await getDocs(clientsQuery);
   // DEBUG: Mostrar cantidad de documentos encontrados
   console.log('[CLIENTES] Documentos encontrados en client_businesses:', clientsSnapshot.size);
-  clientsSnapshot.forEach(doc => console.log('[CLIENTES] Documento:', doc.id, doc.data()));
+    clientsSnapshot.forEach(doc => console.log('[CLIENTES] Documento:', doc.id, doc.data()));
     
-    // Obtener información adicional de cada cliente
-    const clientsData = await Promise.all(clientsSnapshot.docs.map(async (docSnap) => {
+    // Obtener información de cada cliente en la subcolección
+    const clientsDataRaw = await Promise.all(clientsSnapshot.docs.map(async (docSnap) => {
       const data = docSnap.data();
-      
-      try {
-        const userDoc = await getDoc(doc(db, "users", data.clientId));
-        if (userDoc.exists()) {
-          return {
-            id: docSnap.id,
-            clientId: data.clientId,
-            email: userDoc.data().email,
-            phone: userDoc.data().phone,
-            name: userDoc.data().displayName,
-            points: data.points || 0,
-            createdAt: data.createdAt,
-            updatedAt: data.updatedAt,
-            ...data
-          };
-        }
-      } catch (error) {
-        console.error("Error al obtener datos del cliente:", error);
-      }
-      
       return {
         id: docSnap.id,
-        clientId: data.clientId,
+        name: data.name || '',
+        phoneNumber: data.phoneNumber || data.phone || '',
         points: data.points || 0,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-        ...data
+        firstVisit: data.firstVisit || data.createdAt || null,
+        purchaseCount: data.purchaseCount || 0,
+        totalSpent: data.totalSpent || 0,
+        lastVisit: data.lastVisit || null,
+        // ...otros campos que tengas en firestore
       };
     }));
-    
+    const clientsData = clientsDataRaw.filter(client => {
+      if (!client.phoneNumber) {
+        console.warn('[CLIENTES] Documento sin teléfono, será omitido:', client);
+        return false;
+      }
+      return true;
+    });
+
     clients.value = clientsData;
     filteredClients.value = [...clientsData];
     sortClients();
@@ -553,6 +539,12 @@ async function viewClientDetails(client) {
 
 async function loadClientTransactions(clientId) {
   try {
+    const client = clients.value.find(c => c.id === clientId);
+    if (!client || !client.phoneNumber) {
+      console.warn('[CLIENTES] Cliente sin teléfono, no se puede cargar transacciones:', client);
+      clientTransactions.value = [];
+      return;
+    }
     const transactionsQuery = query(
       collection(db, "transactions"),
       where("clientId", "==", clientId),
@@ -574,10 +566,15 @@ async function loadClientTransactions(clientId) {
 
 async function loadClientRewards(clientId) {
   try {
+    const client = clients.value.find(c => c.id === clientId);
+    const phoneNumber = client?.phoneNumber || clientId;
+    if (!phoneNumber) {
+      console.warn('[CLIENTES] Cliente sin teléfono, no se puede cargar premios:', client);
+      clientRewards.value = [];
+      return;
+    }
     // Fetch from business_redemptions/{businessSlug}/redemptions where phoneNumber == client phone
     const businessSlug = businessId.value;
-    const client = clients.value.find(c => c.id === clientId);
-    const phoneNumber = client?.phone || clientId;
     const redemptionsQuery = query(
       collection(db, `business_redemptions/${businessSlug}/redemptions`),
       where("phoneNumber", "==", phoneNumber),
@@ -801,6 +798,7 @@ function formatDate(timestamp) {
     minute: '2-digit'
   });
 }
+
 </script>
 
 <style scoped>
