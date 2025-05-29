@@ -39,9 +39,21 @@ async function isDuplicateReceipt(
       ? phoneNumber
       : `+${phoneNumber}`;
 
-    // Si tenemos RUC e invoiceNumber, usarlos para una identificación más precisa
+    // Si tenemos RUC e invoiceNumber, verificar en la colección invoices primero
     if (invoiceData.ruc && invoiceData.invoiceNumber) {
-      // Verificar en la colección de compras del negocio
+      // Con el nuevo patrón de naming, podemos consultar directamente por ID
+      const invoiceDocId = `${invoiceData.ruc}-${invoiceData.invoiceNumber}`;
+      const invoiceDoc = await db.collection("invoices").doc(invoiceDocId).get();
+      
+      if (invoiceDoc.exists) {
+        console.log(`⚠️ DUPLICADO ENCONTRADO: Factura con ID=${invoiceDocId} ya existe`);
+        // Obtener detalles del duplicado para el log
+        const duplicateDoc = invoiceDoc.data();
+        console.log(`Detalles del duplicado: Fecha=${duplicateDoc.date}, Teléfono=${duplicateDoc.phoneNumber}`);
+        return true;
+      }
+      
+      // También verificar en business_invoices como respaldo
       const purchasesRef = db
         .collection("business_invoices")
         .doc(businessSlug)
@@ -53,7 +65,7 @@ async function isDuplicateReceipt(
       const purchasesSnapshot = await purchasesRef.get();
       if (!purchasesSnapshot.empty) {
         console.log(
-          `Factura duplicada detectada: RUC ${invoiceData.ruc}, Número ${invoiceData.invoiceNumber}`
+          `Factura duplicada detectada en business_invoices: RUC ${invoiceData.ruc}, Número ${invoiceData.invoiceNumber}`
         );
         return true;
       }
@@ -409,21 +421,37 @@ async function registerPurchase(
   );
 
   // 3. Registrar la factura en la colección 'invoices'
-  const invoiceId = `${businessSlug}_${normalizedPhone}_${Date.now()}`;
+  let invoiceId;
+  if (additionalData.ruc && additionalData.invoiceNumber) {
+    // Usar RUC + número de comprobante para evitar duplicados
+    invoiceId = `${additionalData.ruc}-${additionalData.invoiceNumber}`;
+  } else {
+    // Fallback si no tenemos RUC o número de comprobante
+    invoiceId = `${businessSlug}_${normalizedPhone}_${Date.now()}`;
+  }
+  
   console.log(`Registrando factura con ID: ${invoiceId}`);
   const invoiceRef = db.collection("invoices").doc(invoiceId);
-  await invoiceRef.set({
-    businessSlug: businessSlug,
-    phoneNumber: normalizedPhone,
-    amount: parseFloat(amount),
-    date: admin.firestore.FieldValue.serverTimestamp(),
-    receiptUrl: imageUrl,
-    verified: true,
-    invoiceNumber: additionalData.invoiceNumber || null,
-    ruc: additionalData.ruc || null,
-    address: additionalData.address || null,
-    businessName: additionalData.businessName || null,
-  });
+  
+  // Verificar si ya existe para evitar sobrescribir
+  const existingInvoice = await invoiceRef.get();
+  if (existingInvoice.exists) {
+    console.log(`⚠️ Factura ${invoiceId} ya existe, saltando registro en invoices`);
+  } else {
+    await invoiceRef.set({
+      businessSlug: businessSlug,
+      phoneNumber: normalizedPhone,
+      amount: parseFloat(amount),
+      date: admin.firestore.FieldValue.serverTimestamp(),
+      receiptUrl: imageUrl,
+      verified: true,
+      invoiceNumber: additionalData.invoiceNumber || null,
+      ruc: additionalData.ruc || null,
+      address: additionalData.address || null,
+      businessName: additionalData.businessName || null,
+    });
+    console.log(`✅ Factura registrada en invoices con ID: ${invoiceId}`);
+  }
 
   // 2. Actualizar colección business_customers
   try {
@@ -494,18 +522,25 @@ async function registerPurchase(
       .doc(purchaseId);
 
     let purchaseData = {
-      extractedText: additionalData.extractedText || null,
+      extractedText: additionalData.extractedText || additionalData.fullText || null,
       id: purchaseId,
       phoneNumber: normalizedPhone,
       customerName: customerName,
       date: admin.firestore.FieldValue.serverTimestamp(),
       amount: parseFloat(amount),
-      ...(imageUrl ? { receiptUrl: imageUrl } : { receiptUrl: null }),
+      receiptUrl: imageUrl || null,
       verified: additionalData.verified || false,
       invoiceNumber: additionalData.invoiceNumber || null,
       ruc: additionalData.ruc || null,
       address: additionalData.address || null,
       businessName: additionalData.businessName || null,
+      vendor: additionalData.vendor || null,
+      purchaseDate: additionalData.purchaseDate || null,
+      items: additionalData.items || [],
+      hasStoredImage: additionalData.hasStoredImage || false,
+      processedFromQueue: additionalData.processedFromQueue || false,
+      queueId: additionalData.queueId || null,
+      // Agregar otros campos adicionales sin duplicar
       ...Object.fromEntries(
         Object.entries(additionalData).filter(
           ([key]) =>
@@ -515,6 +550,15 @@ async function registerPurchase(
               "address",
               "businessName",
               "verified",
+              "vendor",
+              "purchaseDate",
+              "items",
+              "hasStoredImage",
+              "processedFromQueue",
+              "queueId",
+              "extractedText",
+              "fullText",
+              "customerName"
             ].includes(key)
         )
       ),

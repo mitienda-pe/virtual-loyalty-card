@@ -143,8 +143,7 @@ async function processImageMessage(
             imageBuffer,
             "unidentified", // No tenemos RUC
             normalizedPhoneForStorage,
-            new Date().toISOString(),
-            "missing_ruc_amount_or_invoiceId"
+            `missing_data_${Date.now()}`
           );
         } catch (imgErr) {
           console.error("Error almacenando imagen sin RUC/monto/comprobante:", imgErr);
@@ -179,7 +178,7 @@ async function processImageMessage(
             imageBuffer,
             "unregistered_business",
             user.phone,
-            `ruc_${extractedData.ruc}_${Date.now()}`
+            `unregistered_ruc_${extractedData.ruc}_${Date.now()}`
           );
           console.log("📸 Imagen almacenada para análisis posterior (negocio no registrado)");
         } catch (storageError) {
@@ -205,11 +204,15 @@ async function processImageMessage(
       let receiptImageUrl = null;
       try {
         console.log("📸 Almacenando imagen del recibo en Firebase Storage...");
+        
+        // Crear un ID único y descriptivo para la imagen
+        const imageId = `${extractedData.ruc}_${extractedData.invoiceNumber || 'receipt'}_${Date.now()}`;
+        
         const storageResult = await storeReceiptImage(
           imageBuffer,
           extractedData.businessSlug,
           user.phone,
-          `ruc_${extractedData.ruc}_${Date.now()}`
+          imageId
         );
         
         if (storageResult) {
@@ -274,7 +277,12 @@ async function processImageMessage(
           verified: true,
           processedFromQueue: false,
           queueId: null,
-          hasStoredImage: !!receiptImageUrl // Indicador de si tenemos imagen almacenada
+          hasStoredImage: !!receiptImageUrl, // Indicador de si tenemos imagen almacenada
+          extractedText: extractedText, // Texto extraído completo
+          vendor: extractedData.vendor,
+          purchaseDate: extractedData.purchaseDate,
+          items: extractedData.items || [],
+          fullText: extractedText // Respaldo del texto
         }
       );
 

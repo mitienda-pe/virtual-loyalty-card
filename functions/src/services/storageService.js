@@ -31,8 +31,10 @@ async function storeReceiptImage(imageBuffer, businessSlug, phoneNumber, receipt
     const timestamp = Date.now();
     const uniqueId = receiptId || `receipt_${timestamp}`;
     
-    // Construir la ruta de almacenamiento
-    const storagePath = `receipts/${businessSlug}/${phoneNumber}/${timestamp}_${uniqueId}.jpg`;
+    // Construir la ruta de almacenamiento sin duplicar el timestamp
+    // Si receiptId ya contiene información de identificación, usarlo directamente
+    const fileName = receiptId ? `${receiptId}.jpg` : `${timestamp}_receipt.jpg`;
+    const storagePath = `receipts/${businessSlug}/${phoneNumber}/${fileName}`;
     
     console.log(`📁 Almacenando imagen en: ${storagePath}`);
     
@@ -53,18 +55,18 @@ async function storeReceiptImage(imageBuffer, businessSlug, phoneNumber, receipt
       }
     });
     
-    // Obtener la URL firmada para acceso público
-    const [url] = await file.getSignedUrl({
-      action: 'read',
-      expires: '03-01-2500' // Fecha lejana para URL "permanente"
-    });
+    // Hacer el archivo público para evitar problemas de permisos
+    await file.makePublic();
+    
+    // Obtener la URL pública directa
+    const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
     
     console.log(`✅ Imagen almacenada exitosamente en: ${storagePath}`);
-    console.log(`🔗 URL de acceso: ${url}`);
+    console.log(`🔗 URL de acceso público: ${publicUrl}`);
     
     return {
       path: storagePath,
-      url: url
+      url: publicUrl
     };
   } catch (error) {
     console.error('❌ Error almacenando imagen:', error);
