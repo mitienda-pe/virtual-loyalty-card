@@ -1,0 +1,34 @@
+{
+  "whatsapp": {
+    "app_secret": "09353d1301e356b0cdcba78d2a9c7639",
+    "api_token": "EAAJoZCiJisnoBO1f9v4mv7FRkD5kOJyxF2eNwNLyAuFzRYURV2Jeau3p2ZBd0bbQleo1jbXM4fYiKZANk0GTIwyRaIs1qQ1XJ6Ab1qhIttcLntKq7WUSXZAVS9WDJ2XotSQunELvsoz8xth9ymrCwlEPMxhOiOAMVuPGgLuqaw4jkZC8SvOEVa7fbDuNw2AZDZD",
+    "phone_number_id": "108512615643697",
+    "phone_id": "108512615643697",
+    "verify_token": "38f7d5a1"
+  },
+  "twilio": {
+    "account_sid": "AC6153a64acc67e528c1ebda51daf80dcb",
+    "auth_token": "f87c3ae67002a17faf5d853c29ef0793"
+  },
+  "google": {
+    "credentials": {
+      "client_email": "vision-whatsapp-bot@virtual-loyalty-card-e37c9.iam.gserviceaccount.com",
+      "project_id": "virtual-loyalty-card-e37c9",
+      "client_id": "104649208550659504433",
+      "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+      "universe_domain": "googleapis.com",
+      "token_uri": "https://oauth2.googleapis.com/token",
+      "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+      "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDxOJtHBUv10go2\nUr10UocMFcfBKbkcdWgd5S0zhRszG1D+wdj0f/yBDW5DMKe0HmQce4rLVwqWkyhY\nQBuzmTfnG+1zGpE2r5sSFbip/J1kGMC1IyJi9vp7EXZ/gdzNaKFYBD5jLtnA1na1\nQz9SEcXSnVUCQPLCkgkN3dyNZdHSJ2iQzfeeF12ol5rKbWlyGwCk1xClhy0O8Cl1\nYw13/oTZR95b2BOUePhjwK22fa0lzvMFitlVzFMUMDtJJtRZuTxBE83ifX7rVyX2\nOq5JxtdIyB1+CMHtfFvIlUz+JaX8mJ+8mQKP9X20YnVcs9+s7UgwXmbIGSMxvIGD\nibkAwH/RAgMBAAECggEAEAB00IfJ67M0yTjA56QH4GXbe/VkGb6yGvWWg4nrbX78\n5wF9/m41FmyJKXzjSyAO/RK2+Nk70xRNA1mxXL8nxbWFEXMsOef5TgBR4TjoSfkY\nY4vCnrUKlbppVXkMaDXuKhQR/Wtgt5mig1DENRIHwPp95qnfUMf2QMy8ckbUXe/t\nVP1SSdACGg8WzJlvM4PXl4GERD3HxiqOAuS6ejCwA9kGuW7zQZ9yVn/OOcMncPHc\n/0VqAENygDnTP31g436fJBXUGG8I0dXjwgceodZcQnmpvVnmZs1HCAvTAEC6LWlr\nJA9oHba9p+7La13VS1Zn4zwWsBx/cjlM8YQYOAgUVwKBgQD/TDmKihw0NF8lz4nz\n9wefI15PV+wb7SD/cR950gftInTI3FK4urA2OLKC71zebBUvbTZnZSVGBJRpvd8H\nWBMGAnkgWDu0iM4NvFwo4QxYu1E+tIyHzGEkoKzwweFYO9wzDdJ41mzt39mLiygs\nX9xpwvt0gw9Eyx9S2y97GPA1KwKBgQDx4nglLBszOY93j1KG00CoHfrnLhmMu81U\nCKMBrbnt+k28aIu0BuCyghP7wTAbASJvPDXeN9FBba/PsznhvcFC5HvAwBlhhPh4\nELdag6smNMn5E/7J0ymIwClsv3ov4+nwaI2WHOE/2t4oQYdr+2GlH93XuwCmY4IO\nXs260kYY8wKBgDv9hWfwnEAILnOMGTaizb+vZ/HtDyZgymg8BNFzcTlf52FrpGSU\nOeQD3q614HTDoRbL6wTQ17lkShuu6kGniJDY8+2NzjnWC9VedamFeIlBOw4pDvy6\nIfmhaAILDRDWwB+fF94dROuAtnX79Sy4OesATmZKhcP8lxe5OacLbSaRAoGAYnD4\n1KgOqdpTOSVrQNPZDJKm+k8Ytt33wquBK724XdHwsS0bLjleWUf3Og51tYfQq9Sl\nV7r/vtEVLEKU2/qOHNtAQkHsEnQ7ayHifUP486OoT2aD2z/FN5J9SXTkFXl8TAtB\nFEbMpWA96cRBiQDVzI4biyDgMtdspsyOjenl/WECgYAepWhzUttXyBc72EqSddMM\nA4lWM5VQbbWSV1TqfRueDAz25un/VMQ6C1qKQUq3ZthuqmAtDGE6hSzMTaTs1vtY\nXRr2CQypDcJsr8ToMZI4Dw4HYqT1Tf90puCZOriqOOfjOnZmEk2fjoqk7RTtvdYP\nM0VjJyJlIy2vUuvY8r4w4Q==\n-----END PRIVATE KEY-----\n",
+      "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/vision-whatsapp-bot%40virtual-loyalty-card-e37c9.iam.gserviceaccount.com",
+      "private_key_id": "f7fbcfb2c805a637256620edc5a5ca3e3482b13f",
+      "type": "service_account"
+    }
+  },
+  "mercadopago": {
+    "access_token": "APP_USR-33bd217c-695c-4bf4-86b0-bf6a9d5b6bc6"
+  },
+  "frontend": {
+    "url": "https://virtual-loyalty-card-e37c9.web.app"
+  }
+}

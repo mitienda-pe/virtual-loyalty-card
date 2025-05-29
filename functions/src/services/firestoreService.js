@@ -553,6 +553,127 @@ async function registerPurchase(
         .doc(additionalData.ruc);
       await rucMapRef.set({ businessSlug }, { merge: true });
     }
+
+    // 5. Registrar en customer_businesses (nueva colección)
+    try {
+      const customerBusinessRef = db
+        .collection("customer_businesses")
+        .doc(normalizedPhone)
+        .collection("businesses")
+        .doc(businessSlug);
+
+      const customerBusinessDoc = await customerBusinessRef.get();
+
+      if (customerBusinessDoc.exists) {
+        // Actualizar negocio existente para el cliente
+        const existingData = customerBusinessDoc.data();
+        await customerBusinessRef.update({
+          totalSpent: (existingData.totalSpent || 0) + parseFloat(amount),
+          purchaseCount: (existingData.purchaseCount || 0) + 1,
+          lastVisit: admin.firestore.FieldValue.serverTimestamp(),
+          lastPurchase: {
+            amount: parseFloat(amount),
+            date: admin.firestore.FieldValue.serverTimestamp(),
+            invoiceNumber: additionalData.invoiceNumber || null,
+            ruc: additionalData.ruc || null
+          }
+        });
+      } else {
+        // Crear nuevo registro de negocio para el cliente
+        // Obtener información del negocio
+        let businessName = businessSlug;
+        try {
+          const businessDoc = await db.collection("businesses").doc(businessSlug).get();
+          if (businessDoc.exists) {
+            businessName = businessDoc.data().name || businessSlug;
+          }
+        } catch (err) {
+          console.error(`Error obteniendo nombre del negocio ${businessSlug}:`, err);
+        }
+
+        await customerBusinessRef.set({
+          businessSlug: businessSlug,
+          businessName: businessName,
+          totalSpent: parseFloat(amount),
+          purchaseCount: 1,
+          firstVisit: admin.firestore.FieldValue.serverTimestamp(),
+          lastVisit: admin.firestore.FieldValue.serverTimestamp(),
+          lastPurchase: {
+            amount: parseFloat(amount),
+            date: admin.firestore.FieldValue.serverTimestamp(),
+            invoiceNumber: additionalData.invoiceNumber || null,
+            ruc: additionalData.ruc || null
+          }
+        });
+      }
+
+      console.log(
+        "✅ Negocio registrado en customer_businesses:",
+        `${normalizedPhone}/businesses/${businessSlug}`
+      );
+    } catch (err) {
+      console.error("❌ Error registrando en customer_businesses:", err);
+    }
+
+    // 6. Registrar en customer_purchases (nueva colección)
+    try {
+      // Crear un ID personalizado usando RUC + número de factura si están disponibles
+      let customerPurchaseId = null;
+      if (additionalData.ruc && additionalData.invoiceNumber) {
+        customerPurchaseId = `${additionalData.ruc}-${additionalData.invoiceNumber}`;
+      } else {
+        // Generar un ID único
+        customerPurchaseId = db
+          .collection("customer_purchases")
+          .doc(normalizedPhone)
+          .collection("purchases")
+          .doc().id;
+      }
+
+      const customerPurchaseRef = db
+        .collection("customer_purchases")
+        .doc(normalizedPhone)
+        .collection("purchases")
+        .doc(customerPurchaseId);
+
+      // Obtener información del negocio para el registro
+      let businessName = businessSlug;
+      try {
+        const businessDoc = await db.collection("businesses").doc(businessSlug).get();
+        if (businessDoc.exists) {
+          businessName = businessDoc.data().name || businessSlug;
+        }
+      } catch (err) {
+        console.error(`Error obteniendo nombre del negocio ${businessSlug}:`, err);
+      }
+
+      const customerPurchaseData = {
+        id: customerPurchaseId,
+        businessSlug: businessSlug,
+        businessName: businessName,
+        amount: parseFloat(amount),
+        date: admin.firestore.FieldValue.serverTimestamp(),
+        receiptUrl: imageUrl,
+        verified: additionalData.verified || true,
+        invoiceNumber: additionalData.invoiceNumber || null,
+        ruc: additionalData.ruc || null,
+        address: additionalData.address || null,
+        usedForRedemption: false, // Inicialmente no usado para redención
+        // Incluir datos adicionales si están disponibles
+        ...(additionalData.vendor ? { vendor: additionalData.vendor } : {}),
+        ...(additionalData.items ? { items: additionalData.items } : {}),
+        ...(additionalData.amountInWords ? { amountInWords: additionalData.amountInWords } : {})
+      };
+
+      await customerPurchaseRef.set(customerPurchaseData);
+      console.log(
+        "✅ Compra registrada en customer_purchases:",
+        `${normalizedPhone}/purchases/${customerPurchaseId}`
+      );
+    } catch (err) {
+      console.error("❌ Error registrando en customer_purchases:", err);
+    }
+
   } catch (error) {
     console.error("Error registrando en colecciones secundarias:", error);
     // Continuamos aunque falle este registro secundario
@@ -798,7 +919,8 @@ async function redeemReward(businessSlug, phoneNumber, redemptionData = {}) {
       throw new Error('No hay consumos registrados para este negocio');
     }
     const consumptionsNeeded = redemptionData.consumptionsNeeded || 10;
-    // Buscar consumos no usados (FIFO)
+    
+    // Buscar consumos no usados (FIFO) en la estructura actual
     const purchases = businessData.purchases;
     const unusedIndexes = [];
     for (let i = 0; i < purchases.length; i++) {
@@ -808,8 +930,11 @@ async function redeemReward(businessSlug, phoneNumber, redemptionData = {}) {
     if (unusedIndexes.length < consumptionsNeeded) {
       throw new Error('No hay suficientes consumos para redimir la recompensa');
     }
-    // Marcar consumos como usados
+    
+    // Marcar consumos como usados en la estructura actual
     const consumptionsUsed = [];
+    const purchaseIdsToUpdate = []; // Para actualizar en customer_purchases
+    
     for (const idx of unusedIndexes) {
       purchases[idx].usedForRedemption = true;
       consumptionsUsed.push({
@@ -819,11 +944,37 @@ async function redeemReward(businessSlug, phoneNumber, redemptionData = {}) {
         ruc: purchases[idx].ruc || null,
         receiptUrl: purchases[idx].receiptUrl || null,
       });
+      
+      // Si tenemos RUC e invoiceNumber, guardamos el ID para actualizar customer_purchases
+      if (purchases[idx].ruc && purchases[idx].invoiceNumber) {
+        purchaseIdsToUpdate.push(`${purchases[idx].ruc}-${purchases[idx].invoiceNumber}`);
+      }
     }
-    // Actualizar datos de cliente
+    
+    // Actualizar datos de cliente (estructura actual)
     t.update(customerRef, {
       [`businesses.${businessSlug}.purchases`]: purchases,
     });
+    
+    // También marcar como usados en customer_purchases (nueva estructura)
+    for (const purchaseId of purchaseIdsToUpdate) {
+      const customerPurchaseRef = db
+        .collection("customer_purchases")
+        .doc(normalizedPhone)
+        .collection("purchases")
+        .doc(purchaseId);
+      
+      try {
+        t.update(customerPurchaseRef, {
+          usedForRedemption: true,
+          redemptionDate: admin.firestore.FieldValue.serverTimestamp()
+        });
+      } catch (updateError) {
+        console.warn(`No se pudo actualizar customer_purchases para ${purchaseId}:`, updateError.message);
+        // No interrumpimos la transacción por esto
+      }
+    }
+    
     // Crear registro de redención
     const redemptionRecord = {
       phoneNumber: normalizedPhone,
@@ -836,6 +987,7 @@ async function redeemReward(businessSlug, phoneNumber, redemptionData = {}) {
     };
     const redemptionDocRef = redemptionsRef.doc();
     t.set(redemptionDocRef, redemptionRecord);
+    
     return {
       success: true,
       redemption: redemptionRecord,
@@ -857,6 +1009,64 @@ async function getRedemptionHistory(businessSlug, phoneNumber) {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
+/**
+ * Obtiene las compras de un cliente desde la nueva estructura customer_purchases
+ * @param {string} phoneNumber - Número de teléfono del cliente
+ * @param {string} [businessSlug] - Slug del negocio (opcional) para filtrar
+ * @param {number} [limit] - Límite de resultados (opcional)
+ * @returns {Promise<object[]>} - Array de compras
+ */
+async function getCustomerPurchases(phoneNumber, businessSlug = null, limit = null) {
+  try {
+    if (!db) throw new Error('Firestore DB not initialized');
+    
+    const normalizedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+${phoneNumber}`;
+    let query = db.collection("customer_purchases")
+      .doc(normalizedPhone)
+      .collection("purchases")
+      .orderBy("date", "desc");
+    
+    // Filtrar por negocio si se especifica
+    if (businessSlug) {
+      query = query.where("businessSlug", "==", businessSlug);
+    }
+    
+    // Aplicar límite si se especifica
+    if (limit) {
+      query = query.limit(limit);
+    }
+    
+    const snapshot = await query.get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error obteniendo compras del cliente:', error);
+    return [];
+  }
+}
+
+/**
+ * Obtiene los negocios de un cliente desde la nueva estructura customer_businesses
+ * @param {string} phoneNumber - Número de teléfono del cliente
+ * @returns {Promise<object[]>} - Array de negocios del cliente
+ */
+async function getCustomerBusinesses(phoneNumber) {
+  try {
+    if (!db) throw new Error('Firestore DB not initialized');
+    
+    const normalizedPhone = phoneNumber.startsWith("+") ? phoneNumber : `+${phoneNumber}`;
+    const snapshot = await db.collection("customer_businesses")
+      .doc(normalizedPhone)
+      .collection("businesses")
+      .orderBy("lastVisit", "desc")
+      .get();
+    
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.error('Error obteniendo negocios del cliente:', error);
+    return [];
+  }
+}
+
 module.exports = {
   setFirestoreDb,
   isDuplicateReceipt,
@@ -866,4 +1076,6 @@ module.exports = {
   findBusinessByRUC,
   redeemReward,
   getRedemptionHistory,
+  getCustomerPurchases,
+  getCustomerBusinesses,
 };

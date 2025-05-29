@@ -14,6 +14,11 @@ function extractRUCAndAmount(text, customPatterns = {}) {
 
   // Patrones para número de comprobante (factura/boleta)
   const invoiceNumberPatterns = customPatterns.invoiceNumberPatterns || [
+    // Patrones específicos para boletas y facturas con formato estándar
+    /NRO\s+DCTO\s*:?([A-Z0-9\-]+)/i, // Para "NRO DCTO :B011-00524671"
+    /([BF]\d{3}-\d{8})/i, // Patrón específico B011-00524671, F001-12345678
+    /([BF]\d{3}\s*-\s*\d{8})/i, // Con espacios alrededor del guión
+    /BOLETA\s+DE\s+VENTA\s+ELECTRONICA[^\n]*\s*([A-Z0-9\-]+)/i,
     /(?:Factura|Boleta|Ticket|Comprobante)\s*(?:N[°o]?|No\.?|#|:)\s*([A-Z0-9\-]{4,})/i,
     /N[°o]?\s*([A-Z0-9\-]{4,})/i,
     /([FBT][A-Z0-9\-]{3,})/i,
@@ -105,18 +110,30 @@ function extractRUCAndAmount(text, customPatterns = {}) {
   for (const pattern of invoiceNumberPatterns) {
     const match = text.match(pattern);
     if (match && match[1]) {
-      // Manejar patrones específicos B/F con formato especial
-      if (/B\s*([0-9]{3})\s*-\s*([0-9]{6,8})/i.test(match[0])) {
+      // Priorizar patrones específicos
+      if (pattern.toString().includes("NRO\\s+DCTO")) {
+        // Para "NRO DCTO :B011-00524671"
+        invoiceNumber = match[1].trim();
+        console.log(`🧾 Número de comprobante detectado (NRO DCTO): ${invoiceNumber}`);
+      } else if (/([BF]\d{3}-\d{8})/i.test(match[1])) {
+        // Para formatos exactos como B011-00524671
+        invoiceNumber = match[1].toUpperCase();
+        console.log(`🧾 Número de comprobante detectado (formato directo): ${invoiceNumber}`);
+      } else if (/B\s*([0-9]{3})\s*-\s*([0-9]{6,8})/i.test(match[0])) {
         invoiceNumber = match[0].replace(/\s+/g, "").toUpperCase();
+        console.log(`🧾 Número de comprobante detectado (B con espacios): ${invoiceNumber}`);
       } else if (/F\s*([0-9]{3})\s*-\s*([0-9]{6,8})/i.test(match[0])) {
         invoiceNumber = match[0].replace(/\s+/g, "").toUpperCase();
+        console.log(`🧾 Número de comprobante detectado (F con espacios): ${invoiceNumber}`);
       } else {
         invoiceNumber = match[1].trim();
+        console.log(`🧾 Número de comprobante detectado (genérico): ${invoiceNumber}`);
       }
       break;
     } else if (match && match[2]) {
       // Para patrones que capturan serie y número por separado
       invoiceNumber = `${match[1]}-${match[2]}`;
+      console.log(`🧾 Número de comprobante detectado (serie-número): ${invoiceNumber}`);
       break;
     }
   }
@@ -310,6 +327,55 @@ function extractRUCAndAmount(text, customPatterns = {}) {
     }
   }
 
+  // Intentar extraer productos/servicios del texto
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Buscar líneas que contengan información de productos
+    // Patrón para cantidad, descripción y precio: "1.000 BAGUETTE FRANCES X    4.90    4.90"
+    const itemPattern1 = /^([0-9]+(?:\.[0-9]+)?)\s+(.+?)\s+([0-9]+[.,][0-9]{2})\s+([0-9]+[.,][0-9]{2})$/;
+    const match1 = line.match(itemPattern1);
+    
+    if (match1) {
+      const quantity = parseFloat(match1[1]);
+      const description = match1[2].trim().replace(/\s+X\s*$/, ''); // Remover 'X' al final
+      const unitPrice = parseFloat(match1[3].replace(',', '.'));
+      const subtotal = parseFloat(match1[4].replace(',', '.'));
+      
+      items.push({
+        quantity,
+        description,
+        unitPrice,
+        subtotal
+      });
+      
+      console.log(`🛒 Producto detectado: ${quantity} x ${description} - S/${subtotal}`);
+    }
+    
+    // Patrón alternativo más simple para descripciones y precios
+    const itemPattern2 = /^([A-Za-z][A-Za-z0-9\s\.]+)\s+([0-9]+[.,][0-9]{2})$/;
+    const match2 = line.match(itemPattern2);
+    
+    if (match2 && !match1) { // Solo si no coincidió con el patrón anterior
+      const description = match2[1].trim();
+      const price = parseFloat(match2[2].replace(',', '.'));
+      
+      // Filtrar líneas que no parecen productos (totales, etc.)
+      if (!/^(TOTAL|SUBTOTAL|IGV|DESCUENTO|IMPORTE)/i.test(description) && 
+          description.length > 3 && price > 0) {
+        items.push({
+          quantity: 1,
+          description,
+          unitPrice: price,
+          subtotal: price
+        });
+        
+        console.log(`🛒 Producto detectado (simple): ${description} - S/${price}`);
+      }
+    }
+  }
+
   // Retornar la información extraída
   return {
     ruc,
@@ -319,9 +385,10 @@ function extractRUCAndAmount(text, customPatterns = {}) {
     businessSlug,
     address,
     vendor,
-    items,
+    items: items.length > 0 ? items : [], // Asegurar que siempre sea un array
     location,
     purchaseDate,
+    invoiceId: invoiceNumber, // Agregar como invoiceId también para compatibilidad
     invoiceNumber,
   };
 }

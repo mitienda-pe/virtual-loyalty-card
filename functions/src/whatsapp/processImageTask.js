@@ -6,7 +6,7 @@ const { processImageWithVision } = require('../services/visionService');
 const { sendWhatsAppMessage } = require('./messaging');
 const { normalizePhoneNumber } = require('../utils/phoneUtils');
 const { extractRUCAndAmount } = require('../utils/textExtraction');
-const { registerPurchase, findBusinessByRUC } = require('../services/firestoreService');
+const { registerPurchase, findBusinessByRUC, getCustomerBusinesses } = require('../services/firestoreService');
 const { updateTaskStatus } = require('../services/cloudTasksService');
 
 // Configuración para WhatsApp
@@ -175,7 +175,10 @@ exports.processImageTask = onRequest(
       
       // Verificar que la compra se haya registrado correctamente antes de enviar confirmación
       console.log("Verificando registro de compra en Firestore...");
-      const customerInfo = await getCustomerInfo(user.phone, businessSlug);
+      
+      // Obtener información del cliente desde la nueva estructura
+      const customerBusinesses = await getCustomerBusinesses(userPhoneNormalized);
+      const customerInfo = customerBusinesses.find(b => b.businessSlug === businessSlug);
       
       if (!customerInfo || !customerInfo.purchaseCount) {
         console.error("No se encontró información del cliente después de registrar la compra");

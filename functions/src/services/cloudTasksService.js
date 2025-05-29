@@ -38,46 +38,56 @@ async function ensureQueueExists() {
     const parent = client.locationPath(PROJECT_ID, LOCATION);
     const queuePath = client.queuePath(PROJECT_ID, LOCATION, QUEUE_NAME);
     
-    try {
-      // Intentar obtener la cola existente
-      const [existingQueue] = await client.getQueue({ name: queuePath });
-      console.log(`Cola existente encontrada: ${existingQueue.name}`);
-      return existingQueue.name;
-    } catch (error) {
-      // Si la cola no existe, crearla
-      if (error.code === 5) { // NOT_FOUND
-        console.log(`Creando cola de Cloud Tasks: ${QUEUE_NAME}`);
-        
-        // Configuración de la cola
-        const queue = {
-          name: queuePath,
-          rateLimits: {
-            maxDispatchesPerSecond: 5,
-            maxBurstSize: 10,
-            maxConcurrentDispatches: 5
-          },
-          retryConfig: {
-            maxAttempts: 5,
-            minBackoff: {seconds: 60}, // 1 minuto
-            maxBackoff: {seconds: 3600}, // 1 hora
-            maxDoublings: 3
-          }
-        };
-        
-        // Crear la cola
-        const [response] = await client.createQueue({
-          parent,
-          queue
-        });
-        
-        console.log(`Cola creada: ${response.name}`);
-        return response.name;
-      } else {
-        throw error;
+    // Configurar timeout más corto para evitar bloqueos
+    const timeout = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Queue creation timeout')), 8000)
+    );
+    
+    const queueOperation = async () => {
+      try {
+        // Intentar obtener la cola existente
+        const [existingQueue] = await client.getQueue({ name: queuePath });
+        console.log(`Cola existente encontrada: ${existingQueue.name}`);
+        return existingQueue.name;
+      } catch (error) {
+        // Si la cola no existe, crearla
+        if (error.code === 5) { // NOT_FOUND
+          console.log(`Creando cola de Cloud Tasks: ${QUEUE_NAME}`);
+          
+          // Configuración de la cola
+          const queue = {
+            name: queuePath,
+            rateLimits: {
+              maxDispatchesPerSecond: 3, // Reducir para evitar sobrecarga
+              maxBurstSize: 5,
+              maxConcurrentDispatches: 3
+            },
+            retryConfig: {
+              maxAttempts: 3, // Reducir intentos
+              minBackoff: {seconds: 30}, // 30 segundos
+              maxBackoff: {seconds: 1800}, // 30 minutos
+              maxDoublings: 2
+            }
+          };
+          
+          // Crear la cola
+          const [response] = await client.createQueue({
+            parent,
+            queue
+          });
+          
+          console.log(`Cola creada: ${response.name}`);
+          return response.name;
+        } else {
+          throw error;
+        }
       }
-    }
+    };
+    
+    // Ejecutar con timeout
+    return await Promise.race([queueOperation(), timeout]);
   } catch (error) {
-    console.error('Error al asegurar que la cola exista:', error);
+    console.error('Error al asegurar que la cola exista:', error.message);
     throw error;
   }
 }

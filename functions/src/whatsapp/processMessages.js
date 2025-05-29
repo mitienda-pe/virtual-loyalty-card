@@ -134,12 +134,15 @@ async function processImageMessage(
       if (!extractedData.ruc || !extractedData.amount || !extractedData.invoiceId) {
         console.log("❌ Información insuficiente en el comprobante (RUC, monto o número de comprobante)");
         
+        // Normalizar el número de teléfono para usarlo en el almacenamiento
+        const normalizedPhoneForStorage = normalizePhoneNumber(user.phone);
+        
         // Almacenar la imagen para análisis posterior, incluso si falta información
         try {
           await storeReceiptImage(
             imageBuffer,
             "unidentified", // No tenemos RUC
-            normalizedPhone,
+            normalizedPhoneForStorage,
             new Date().toISOString(),
             "missing_ruc_amount_or_invoiceId"
           );
@@ -153,7 +156,7 @@ async function processImageMessage(
         if (!extractedData.invoiceId) missingFields.push('número de comprobante');
 
         await sendWhatsAppMessage(
-          normalizedPhone,
+          normalizedPhoneForStorage,
           `No se pudo identificar ${missingFields.join(', ')} en tu comprobante. Por favor, asegúrate de que la imagen sea legible y que el comprobante sea válido.`,
           phoneNumberId,
           apiToken
@@ -368,52 +371,53 @@ Ver tu tarjeta de fidelidad: https://asiduo.club/${
       // Intentar usar Cloud Tasks primero
       let taskId = null;
       try {
-        taskId = await createImageProcessingTask(taskData);
+        console.log('🚀 Intentando crear tarea en Cloud Tasks...');
+        taskId = await createImageProcessingTask(taskData, 0); // Sin delay
         if (taskId) {
           console.log(`✅ Imagen agregada a Cloud Tasks con ID: ${taskId}`);
+          // Enviar mensaje de confirmación
+          await sendWhatsAppMessage(
+            user.phone,
+            "Tu comprobante está siendo procesado en segundo plano. Te notificaremos cuando esté listo (esto puede tomar unos minutos).",
+            phoneNumberId,
+            apiToken
+          );
+          return; // Salir exitosamente
         }
       } catch (cloudTasksError) {
-        console.error("Error al crear tarea en Cloud Tasks:", cloudTasksError);
-        // No lanzamos el error para poder usar el mecanismo de respaldo
+        console.error("Error al crear tarea en Cloud Tasks:", cloudTasksError.message);
+        // Continuar con el mecanismo de respaldo
       }
       
       // Si Cloud Tasks falló o no está disponible, usar la cola tradicional de Firestore
-      if (!taskId) {
-        console.log("Cloud Tasks no disponible o falló, usando cola de respaldo de Firestore");
-        try {
-          const queueId = await queueService.addToQueue({
-            ...taskData,
-            imageBuffer, // Usar el buffer original para la cola de respaldo
-            cloudTasksAttempted: true // Indicar que se intentó usar Cloud Tasks primero
-          });
-          console.log(`✅ Imagen agregada a la cola de respaldo con ID: ${queueId}`);
-        } catch (queueError) {
-          console.error("Error al agregar a la cola de respaldo:", queueError);
-          throw queueError; // En este caso sí lanzamos el error porque es nuestro último recurso
-        }
-      } else {
-        // Si Cloud Tasks funcionó, también agregamos a la cola tradicional como respaldo
-        try {
-          const queueId = await queueService.addToQueue({
-            ...taskData,
-            imageBuffer, // Usar el buffer original para la cola de respaldo
-            taskId, // Agregar referencia al taskId de Cloud Tasks
-            isBackup: true // Indicar que esta es una copia de respaldo
-          });
-          console.log(`✅ Imagen también agregada a la cola de respaldo con ID: ${queueId}`);
-        } catch (queueError) {
-          console.error("Error al agregar a la cola de respaldo:", queueError);
-          // No lanzamos el error para no interrumpir el flujo principal
-        }
+      console.log("Cloud Tasks no disponible o falló, usando cola de respaldo de Firestore");
+      try {
+        const queueId = await queueService.addToQueue({
+          ...taskData,
+          imageBuffer, // Usar el buffer original para la cola de respaldo
+          cloudTasksAttempted: true, // Indicar que se intentó usar Cloud Tasks primero
+          cloudTasksFailed: !taskId // Indicar si Cloud Tasks falló
+        });
+        console.log(`✅ Imagen agregada a la cola de respaldo con ID: ${queueId}`);
+        
+        // Informar al usuario que el procesamiento continuará en segundo plano
+        await sendWhatsAppMessage(
+          user.phone,
+          "Tu comprobante está siendo procesado en segundo plano. Te notificaremos cuando esté listo (esto puede tomar unos minutos).",
+          phoneNumberId,
+          apiToken
+        );
+      } catch (queueError) {
+        console.error("Error al agregar a la cola de respaldo:", queueError);
+        // En este caso sí lanzamos el error porque es nuestro último recurso
+        await sendWhatsAppMessage(
+          user.phone,
+          "Lo siento, hay un problema temporal con el procesamiento de comprobantes. Por favor, inténtalo nuevamente en unos minutos.",
+          phoneNumberId,
+          apiToken
+        );
+        throw queueError;
       }
-      
-      // Informar al usuario que el procesamiento continuará en segundo plano
-      await sendWhatsAppMessage(
-        user.phone,
-        "Tu comprobante está siendo procesado en segundo plano debido a su complejidad. Te notificaremos cuando esté listo (esto puede tomar unos minutos).",
-        phoneNumberId,
-        apiToken
-      );
     }
   } catch (error) {
     console.error("❌ Error general procesando imagen:", error.message);
