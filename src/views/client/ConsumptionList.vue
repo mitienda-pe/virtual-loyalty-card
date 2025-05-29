@@ -201,30 +201,22 @@ async function loadConsumos(isLoadMore = false) {
   }
 }
 
-async function loadMore() {
+function loadMore() {
   if (lastVisible.value) {
-    await loadConsumos(true);
+    loadConsumos(true);
   }
 }
 
-function calculateLevel(points) {
-  if (points >= 1000) return "Platino";
-  if (points >= 500) return "Oro";
-  if (points >= 200) return "Plata";
-  return "Bronce";
+function formatDate(date) {
+  if (!date) return '';
+  const d = date.toDate ? date.toDate() : new Date(date);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
 }
 
-function formatDate(timestamp) {
-  if (!timestamp) return '';
-  
-  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-  return date.toLocaleDateString('es-ES', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+function calculateLevel(points) {
+  if (points >= 1000) return 'Oro';
+  if (points >= 500) return 'Plata';
+  return 'Bronce';
 }
 </script>
 

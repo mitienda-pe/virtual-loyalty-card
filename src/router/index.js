@@ -127,9 +127,9 @@ const routes = [
         meta: { requiresBusinessAdmin: true },
       },
       {
-        path: "business/transactions",
-        name: "BusinessTransactions",
-        component: () => import("@/views/admin/business/TransactionList.vue"),
+        path: "business/consumos",
+        name: "BusinessConsumos",
+        component: () => import("@/views/admin/business/ConsumptionList.vue"),
         meta: { requiresBusinessAdmin: true },
       },
       {
@@ -170,9 +170,9 @@ const routes = [
         props: true,
       },
       {
-        path: "transactions",
-        name: "ClientTransactions",
-        component: () => import("@/views/client/TransactionList.vue"),
+        path: "consumos",
+        name: "ClientConsumos",
+        component: () => import("@/views/client/ConsumptionList.vue"),
       },
       {
         path: "rewards",

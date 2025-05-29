@@ -17,12 +17,10 @@ function extractRUCAndAmount(text, customPatterns = {}) {
     /(?:Factura|Boleta|Ticket|Comprobante)\s*(?:N[°o]?|No\.?|#|:)\s*([A-Z0-9\-]{4,})/i,
     /N[°o]?\s*([A-Z0-9\-]{4,})/i,
     /([FBT][A-Z0-9\-]{3,})/i,
-    /TICKET\s*:?\s*([A-Z0-9\-]+)/i,
-    /DOCUMENTO\s*:?\s*([A-Z0-9\-]+)/i,
-    /N°\s*:?\s*([A-Z0-9\-]+)/i,
-    /NRO\.?\s*:?\s*([A-Z0-9\-]+)/i,
-    /B\s*([0-9]{3})\s*-\s*([0-9]{6,8})/i,
-    /F\s*([0-9]{3})\s*-\s*([0-9]{6,8})/i,
+    /TICKET\s*:?.*([A-Z0-9\-]+)/i,
+    /DOCUMENTO\s*:?.*([A-Z0-9\-]+)/i,
+    /N°\s*:?.*([A-Z0-9\-]+)/i,
+    /NRO\.?\s*:?.*([A-Z0-9\-]+)/i,
   ];
 
   // Patrones para monto total
@@ -36,6 +34,7 @@ function extractRUCAndAmount(text, customPatterns = {}) {
     /TOTAL\s*:?\s*([0-9]+[.,][0-9]{2})/i,
     /IMPORTE\s*:?\s*S\/\.?\s*([0-9]+[.,][0-9]{2})/i,
     /S\/\s*([0-9]+[.,][0-9]{2})\s*(SOLES|PEN|S\.|$)/i,
+    /SON\s*:?\s*(.+?)\s+CON\s+([0-9]{2})\/100\s+SOLES/i,
   ];
 
   // Patrones para razón social
@@ -43,40 +42,6 @@ function extractRUCAndAmount(text, customPatterns = {}) {
     /RAZON SOCIAL\s*:?\s*(.+?)(?=\n|$)/i,
     /NOMBRE COMERCIAL\s*:?\s*(.+?)(?=\n|$)/i,
     /DENOMINACION\s*:?\s*(.+?)(?=\n|$)/i,
-  ];
-
-  // Patrones para dirección
-  const addressPatterns = [
-    /DIRECCION\s*:?\s*(.+?)(?=\n|$)/i,
-    /DOMICILIO FISCAL\s*:?\s*(.+?)(?=\n|$)/i,
-    /DIR\s*:?\s*(.+?)(?=\n|$)/i,
-    /AV\.?\s+([^\n]+?)(?=\n|$)/i,
-    /JR\.?\s+([^\n]+?)(?=\n|$)/i,
-    /CALLE\s+([^\n]+?)(?=\n|$)/i,
-    /URB\.?\s+([^\n]+?)(?=\n|$)/i,
-    /SAN ISIDRO[^\n]*LIMA[^\n]*LIMA/i,
-  ];
-
-  // Patrones para vendedor/mesero
-  const vendorPatterns = [
-    /MOZO\s*:?\s*(.+?)(?=\n|$)/i,
-    /VENDEDOR\s*:?\s*(.+?)(?=\n|$)/i,
-    /CAJERO\s*:?\s*(.+?)(?=\n|$)/i,
-    /ATENDIDO POR\s*:?\s*(.+?)(?=\n|$)/i,
-    /ASESOR\s*:?\s*(.+?)(?=\n|$)/i,
-  ];
-
-  // Patrones para fecha de emisión
-  const datePatterns = [
-    /FECHA DE EMISION\s*:?\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})/i,
-    /FECHA\s*:?\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})/i,
-    /EMISION\s*:?\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})/i,
-    /EMITIDO\s*:?\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})/i,
-    /FECHA\s*:?\s*([0-9]{1,2}\-[0-9]{1,2}\-[0-9]{2,4})/i,
-    /FECHA DE EMISION\s*:?\s*([0-9]{2}\s+[A-Za-z]+\s+[0-9]{4})/i,
-    /FECHA\s*:?\s*([0-9]{2}\s+[A-Za-z]+\s+[0-9]{4})/i,
-    /([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})/i,
-    /([0-9]{1,2}\-[0-9]{1,2}\-[0-9]{2,4})/i,
   ];
 
   // Variables para almacenar la información extraída
@@ -105,18 +70,7 @@ function extractRUCAndAmount(text, customPatterns = {}) {
   for (const pattern of invoiceNumberPatterns) {
     const match = text.match(pattern);
     if (match && match[1]) {
-      // Manejar patrones específicos B/F con formato especial
-      if (/B\s*([0-9]{3})\s*-\s*([0-9]{6,8})/i.test(match[0])) {
-        invoiceNumber = match[0].replace(/\s+/g, "").toUpperCase();
-      } else if (/F\s*([0-9]{3})\s*-\s*([0-9]{6,8})/i.test(match[0])) {
-        invoiceNumber = match[0].replace(/\s+/g, "").toUpperCase();
-      } else {
-        invoiceNumber = match[1].trim();
-      }
-      break;
-    } else if (match && match[2]) {
-      // Para patrones que capturan serie y número por separado
-      invoiceNumber = `${match[1]}-${match[2]}`;
+      invoiceNumber = match[1].trim();
       break;
     }
   }
@@ -127,30 +81,6 @@ function extractRUCAndAmount(text, customPatterns = {}) {
     if (match) {
       businessName = match[1].trim();
       break;
-    }
-  }
-
-  // Si no se encontró con patrones, intentar extraer razón social de las primeras líneas
-  if (!businessName) {
-    const lines = text.split("\n");
-    if (lines.length > 0) {
-      const firstLine = lines[0].trim();
-      if (
-        firstLine &&
-        firstLine.length > 3 &&
-        !/^(RUC|FACTURA|BOLETA|TICKET)/i.test(firstLine)
-      ) {
-        businessName = firstLine;
-      } else if (lines.length > 1) {
-        const secondLine = lines[1].trim();
-        if (
-          secondLine &&
-          secondLine.length > 3 &&
-          !/^(RUC|FACTURA|BOLETA|TICKET)/i.test(secondLine)
-        ) {
-          businessName = secondLine;
-        }
-      }
     }
   }
 
@@ -190,15 +120,15 @@ function extractRUCAndAmount(text, customPatterns = {}) {
     }
   }
 
-  // Buscar monto total - Primero "Importe Total"
-  let importeTotalPattern = /Importe\s+Total\s+S\/\s*:?\s*([0-9]+[.,][0-9]{2})/i;
+  // Buscar monto total
+  let importeTotalPattern =
+    /Importe\s+Total\s+S\/\s*:?\s*([0-9]+[.,][0-9]{2})/i;
   let importeTotalResult = text.match(importeTotalPattern);
   if (importeTotalResult && importeTotalResult[1]) {
     const cleanAmount = importeTotalResult[1].replace(",", ".");
     amount = parseFloat(cleanAmount);
   }
 
-  // Si no encontramos "Importe Total", buscar "Total a Pagar"
   if (!amount || isNaN(amount) || amount <= 0) {
     const totalPagarMatch = text.match(
       /Total\s+a\s+Pagar\s+S\/\s*:?\s*([0-9]+[.,][0-9]{2})/i
@@ -219,94 +149,7 @@ function extractRUCAndAmount(text, customPatterns = {}) {
     const amountCents = amountInWordsMatch[2];
     const wordAmount = convertWordsToNumber(amountWords);
     if (wordAmount !== null) {
-      const wordAmountWithCents = wordAmount + parseInt(amountCents) / 100;
-      // Si no se detectó un monto numérico, usar el monto en letras
-      if (!amount || isNaN(amount) || amount <= 0) {
-        amount = wordAmountWithCents;
-      }
-    }
-  }
-
-  // Si aún no tenemos un monto, probar con otros patrones
-  if (!amount || isNaN(amount) || amount <= 0) {
-    for (const pattern of amountPatterns) {
-      const match = text.match(pattern);
-      if (match) {
-        let amountStr = match[1];
-        amountStr = amountStr.replace(",", ".");
-        const parsedAmount = parseFloat(amountStr);
-
-        if (!isNaN(parsedAmount) && parsedAmount > 0) {
-          amount = parsedAmount;
-          break;
-        }
-      }
-    }
-  }
-
-  // Buscar dirección
-  for (const pattern of addressPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      if (pattern.toString().includes("SAN ISIDRO")) {
-        const baguetteAddressMatch = text.match(/JR\. LUIS SANCHEZ CERRO[^\n]+/i);
-        if (baguetteAddressMatch) {
-          address = baguetteAddressMatch[0].trim();
-        } else {
-          address = "SAN ISIDRO, LIMA";
-        }
-      } else {
-        address = match[1].trim();
-      }
-      break;
-    }
-  }
-
-  // Si encontramos "CAJA" como dirección, ignorarla
-  if (address === "CAJA" || address === "caja") {
-    address = null;
-  }
-
-  // Buscar dirección en el texto completo si no se encontró con los patrones
-  if (!address) {
-    const baguetteAddressMatch = text.match(/JR\.?\s+LUIS\s+SANCHEZ\s+CERRO[^\n]+/i);
-    if (baguetteAddressMatch) {
-      address = baguetteAddressMatch[0].trim();
-    } else {
-      const lines = text.split("\n");
-      for (const line of lines) {
-        if (
-          (line.includes("AV.") ||
-            line.includes("JR.") ||
-            line.includes("CALLE") ||
-            line.includes("URB.") ||
-            line.includes("SAN ISIDRO")) &&
-          line.length > 10 &&
-          !line.includes("RUC") &&
-          !line.includes("TOTAL")
-        ) {
-          address = line.trim();
-          break;
-        }
-      }
-    }
-  }
-
-  // Buscar vendedor/mesero
-  for (const pattern of vendorPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      vendor = match[1].trim();
-      break;
-    }
-  }
-
-  // Buscar fecha de emisión
-  for (const pattern of datePatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      purchaseDate = match[1];
-      break;
+      amount = wordAmount + parseInt(amountCents) / 100;
     }
   }
 
@@ -355,38 +198,22 @@ function convertWordsToNumber(words) {
     quince: 15,
     dieciseis: 16,
     dieciséis: 16,
-    "diez y seis": 16,
     diecisiete: 17,
-    "diez y siete": 17,
     dieciocho: 18,
-    "diez y ocho": 18,
     diecinueve: 19,
-    "diez y nueve": 19,
     veinte: 20,
-    veinti: 20,
-    veintiun: 21,
     veintiuno: 21,
-    "veinte y uno": 21,
-    "veinte y un": 21,
     veintidos: 22,
     veintidós: 22,
-    "veinte y dos": 22,
     veintitres: 23,
     veintitrés: 23,
-    "veinte y tres": 23,
     veinticuatro: 24,
-    "veinte y cuatro": 24,
     veinticinco: 25,
-    "veinte y cinco": 25,
     veintiseis: 26,
     veintiséis: 26,
-    "veinte y seis": 26,
     veintisiete: 27,
-    "veinte y siete": 27,
     veintiocho: 28,
-    "veinte y ocho": 28,
     veintinueve: 29,
-    "veinte y nueve": 29,
     treinta: 30,
     cuarenta: 40,
     cincuenta: 50,
@@ -397,38 +224,26 @@ function convertWordsToNumber(words) {
     cien: 100,
     ciento: 100,
     doscientos: 200,
-    doscientas: 200,
     trescientos: 300,
-    trescientas: 300,
     cuatrocientos: 400,
-    cuatrocientas: 400,
     quinientos: 500,
-    quinientas: 500,
     seiscientos: 600,
-    seiscientas: 600,
     setecientos: 700,
-    setecientas: 700,
     ochocientos: 800,
-    ochocientas: 800,
     novecientos: 900,
-    novecientas: 900,
     mil: 1000,
     millón: 1000000,
-    millon: 1000000,
     millones: 1000000,
   };
 
-  // Normalizar texto
   words = words
     .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  // Casos especiales
-  if (words === "cero") return 0;
+    .replace(/ y /g, " ")
+    .replace(/á/g, "a")
+    .replace(/é/g, "e")
+    .replace(/í/g, "i")
+    .replace(/ó/g, "o")
+    .replace(/ú/g, "u");
 
   const tokens = words.split(/\s+/);
   let result = 0;
@@ -436,20 +251,12 @@ function convertWordsToNumber(words) {
 
   for (let i = 0; i < tokens.length; i++) {
     const word = tokens[i];
-    
-    // Ignorar palabras conectoras
-    if (word === "y" || word === "con") continue;
-
     const value = wordValues[word];
     if (value !== undefined) {
       if (value === 1000 || value === 1000000) {
         if (currentNumber === 0) currentNumber = 1;
-        if (value === 1000000) {
-          result += currentNumber * value;
-          currentNumber = 0;
-        } else {
-          currentNumber *= value;
-        }
+        result += currentNumber * value;
+        currentNumber = 0;
       } else if (value === 100 && currentNumber !== 0) {
         currentNumber *= value;
       } else {
@@ -464,6 +271,7 @@ function convertWordsToNumber(words) {
   }
 
   result += currentNumber;
+
   return result > 0 ? result : null;
 }
 

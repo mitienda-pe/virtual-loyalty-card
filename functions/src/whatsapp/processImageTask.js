@@ -146,7 +146,7 @@ exports.processImageTask = onRequest(
             invoiceNumber: receiptData.invoiceId,
             businessName: receiptData.businessName,
             address: receiptData.address,
-            customerName: user.name || "Cliente",
+            customerName: user.name || (user.profile && user.profile.name) || user.displayName || user.fullName || user.given_name || user.phone || "—",
             verified: true,
             processedFromCloudTasks: true,
             taskId: taskId || req.body.taskId

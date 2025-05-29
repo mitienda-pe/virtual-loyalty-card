@@ -1,29 +1,29 @@
 <template>
-  <div class="transaction-list">
+  <div class="consumption-list">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <button class="btn btn-primary" @click="showAddTransactionModal">
-        <i class="bi bi-plus-circle"></i> Nueva Transacción
+      <button class="btn btn-primary" @click="showAddConsumptionModal">
+        <i class="bi bi-plus-circle"></i> Nuevo Consumo
       </button>
     </div>
     
     <div class="card">
       <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Historial de Transacciones</h5>
+        <h5 class="mb-0">Historial de Consumos</h5>
         <div class="d-flex">
           <input 
             type="text" 
             class="form-control form-control-sm me-2" 
             placeholder="Buscar cliente..." 
             v-model="searchTerm"
-            @input="filterTransactions"
+            @input="filterConsumos"
           >
-          <select v-model="typeFilter" class="form-select form-select-sm me-2" @change="filterTransactions">
+          <select v-model="typeFilter" class="form-select form-select-sm me-2" @change="filterConsumos">
             <option value="">Todos los tipos</option>
             <option value="purchase">Compras</option>
             <option value="reward">Premios</option>
             <option value="adjustment">Ajustes</option>
           </select>
-          <select v-model="dateFilter" class="form-select form-select-sm" @change="filterTransactions">
+          <select v-model="dateFilter" class="form-select form-select-sm" @change="filterConsumos">
             <option value="all">Todas las fechas</option>
             <option value="today">Hoy</option>
             <option value="week">Esta semana</option>
@@ -37,13 +37,13 @@
           <div class="spinner-border text-primary" role="status">
             <span class="visually-hidden">Cargando...</span>
           </div>
-          <p class="mt-2">Cargando transacciones...</p>
+          <p class="mt-2">Cargando consumos...</p>
         </div>
         
-        <div v-else-if="filteredTransactions.length === 0" class="text-center py-5">
+        <div v-else-if="filteredConsumos.length === 0" class="text-center py-5">
           <div class="alert alert-info" role="alert">
-            <h4 class="alert-heading">No se encontraron transacciones</h4>
-            <p>No hay transacciones registradas o ninguna coincide con los filtros seleccionados.</p>
+            <h4 class="alert-heading">No se encontraron consumos</h4>
+            <p>No hay consumos registradas o ninguna coincide con los filtros seleccionados.</p>
           </div>
         </div>
         
@@ -62,23 +62,23 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="transaction in paginatedTransactions" :key="transaction.id">
-                  <td>{{ formatDate(transaction.timestamp) }}</td>
-                  <td>{{ transaction.clientEmail || transaction.clientName || transaction.clientId }}</td>
+                <tr v-for="consumo in paginatedConsumos" :key="consumo.id">
+                  <td>{{ formatDate(consumo.timestamp) }}</td>
+                  <td>{{ consumo.clientEmail || consumo.clientName || consumo.clientId }}</td>
                   <td>
-                    <span :class="`badge ${transaction.type === 'purchase' ? 'bg-primary' : transaction.type === 'reward' ? 'bg-success' : 'bg-info'}`">
-                      {{ transaction.type === 'purchase' ? 'Compra' : transaction.type === 'reward' ? 'Premio' : 'Ajuste' }}
+                    <span :class="`badge ${consumo.type === 'purchase' ? 'bg-primary' : consumo.type === 'reward' ? 'bg-success' : 'bg-info'}`">
+                      {{ consumo.type === 'purchase' ? 'Compra' : consumo.type === 'reward' ? 'Premio' : 'Ajuste' }}
                     </span>
                   </td>
-                  <td>{{ transaction.description }}</td>
-                  <td>{{ transaction.amount ? `$${transaction.amount}` : '-' }}</td>
+                  <td>{{ consumo.description }}</td>
+                  <td>{{ consumo.amount ? `$${consumo.amount}` : '-' }}</td>
                   <td>
-                    <span :class="transaction.points >= 0 ? 'text-success' : 'text-danger'">
-                      {{ transaction.points >= 0 ? '+' : '' }}{{ transaction.points }}
+                    <span :class="consumo.points >= 0 ? 'text-success' : 'text-danger'">
+                      {{ consumo.points >= 0 ? '+' : '' }}{{ consumo.points }}
                     </span>
                   </td>
                   <td>
-                    <button class="btn btn-sm btn-outline-primary" @click="viewTransactionDetails(transaction)">
+                    <button class="btn btn-sm btn-outline-primary" @click="viewConsumptionDetails(consumo)">
                       <i class="bi bi-eye"></i>
                     </button>
                   </td>
@@ -90,7 +90,7 @@
           <!-- Paginación -->
           <div class="d-flex justify-content-between align-items-center mt-4">
             <div>
-              <span class="me-2">Mostrando {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, filteredTransactions.length) }} de {{ filteredTransactions.length }}</span>
+              <span class="me-2">Mostrando {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, filteredConsumos.length) }} de {{ filteredConsumos.length }}</span>
             </div>
             <nav aria-label="Navegación de páginas">
               <ul class="pagination mb-0">
@@ -111,43 +111,43 @@
     </div>
     
     <!-- Modal para ver detalles de la transacción -->
-    <div class="modal fade" id="transactionDetailsModal" tabindex="-1" aria-labelledby="transactionDetailsModalLabel" aria-hidden="true">
+    <div class="modal fade" id="consumptionDetailsModal" tabindex="-1" aria-labelledby="consumptionDetailsModalLabel" aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">
-          <div class="modal-header" :class="selectedTransaction && selectedTransaction.type === 'purchase' ? 'bg-primary text-white' : selectedTransaction && selectedTransaction.type === 'reward' ? 'bg-success text-white' : 'bg-info text-white'">
-            <h5 class="modal-title" id="transactionDetailsModalLabel">Detalles de la Transacción</h5>
+          <div class="modal-header" :class="selectedConsumption && selectedConsumption.type === 'purchase' ? 'bg-primary text-white' : selectedConsumption && selectedConsumption.type === 'reward' ? 'bg-success text-white' : 'bg-info text-white'">
+            <h5 class="modal-title" id="consumptionDetailsModalLabel">Detalles de la Transacción</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
-          <div class="modal-body" v-if="selectedTransaction">
+          <div class="modal-body" v-if="selectedConsumption">
             <div class="mb-3">
               <h5>Información General</h5>
-              <p><strong>Fecha:</strong> {{ formatDate(selectedTransaction.timestamp) }}</p>
+              <p><strong>Fecha:</strong> {{ formatDate(selectedConsumption.timestamp) }}</p>
               <p><strong>Tipo:</strong> 
-                <span :class="`badge ${selectedTransaction.type === 'purchase' ? 'bg-primary' : selectedTransaction.type === 'reward' ? 'bg-success' : 'bg-info'}`">
-                  {{ selectedTransaction.type === 'purchase' ? 'Compra' : selectedTransaction.type === 'reward' ? 'Premio' : 'Ajuste' }}
+                <span :class="`badge ${selectedConsumption.type === 'purchase' ? 'bg-primary' : selectedConsumption.type === 'reward' ? 'bg-success' : 'bg-info'}`">
+                  {{ selectedConsumption.type === 'purchase' ? 'Compra' : selectedConsumption.type === 'reward' ? 'Premio' : 'Ajuste' }}
                 </span>
               </p>
-              <p><strong>Descripción:</strong> {{ selectedTransaction.description }}</p>
-              <p v-if="selectedTransaction.amount"><strong>Monto:</strong> ${{ selectedTransaction.amount }}</p>
+              <p><strong>Descripción:</strong> {{ selectedConsumption.description }}</p>
+              <p v-if="selectedConsumption.amount"><strong>Monto:</strong> ${{ selectedConsumption.amount }}</p>
               <p><strong>Puntos:</strong> 
-                <span :class="selectedTransaction.points >= 0 ? 'text-success' : 'text-danger'">
-                  {{ selectedTransaction.points >= 0 ? '+' : '' }}{{ selectedTransaction.points }}
+                <span :class="selectedConsumption.points >= 0 ? 'text-success' : 'text-danger'">
+                  {{ selectedConsumption.points >= 0 ? '+' : '' }}{{ selectedConsumption.points }}
                 </span>
               </p>
             </div>
             
             <div class="mb-3">
               <h5>Información del Cliente</h5>
-              <p><strong>ID:</strong> {{ selectedTransaction.clientId }}</p>
+              <p><strong>ID:</strong> {{ selectedConsumption.clientId }}</p>
               <p v-if="clientInfo"><strong>Nombre:</strong> {{ clientInfo.name || 'Sin nombre' }}</p>
               <p v-if="clientInfo"><strong>Email:</strong> {{ clientInfo.email || 'Sin email' }}</p>
               <p v-if="clientInfo"><strong>Teléfono:</strong> {{ clientInfo.phone || 'Sin teléfono' }}</p>
               <p v-if="clientInfo"><strong>Puntos actuales:</strong> {{ clientInfo.points || 0 }}</p>
             </div>
             
-            <div v-if="selectedTransaction.type === 'reward' && selectedTransaction.rewardId" class="mb-3">
+            <div v-if="selectedConsumption.type === 'reward' && selectedConsumption.rewardId" class="mb-3">
               <h5>Información del Premio</h5>
-              <p><strong>ID del Premio:</strong> {{ selectedTransaction.rewardId }}</p>
+              <p><strong>ID del Premio:</strong> {{ selectedConsumption.rewardId }}</p>
               <p v-if="rewardInfo"><strong>Nombre:</strong> {{ rewardInfo.name }}</p>
               <p v-if="rewardInfo"><strong>Descripción:</strong> {{ rewardInfo.description }}</p>
               <p v-if="rewardInfo"><strong>Costo en Puntos:</strong> {{ rewardInfo.pointsCost }}</p>
@@ -161,18 +161,18 @@
     </div>
     
     <!-- Modal para añadir transacción -->
-    <div class="modal fade" id="addTransactionModal" tabindex="-1" aria-labelledby="addTransactionModalLabel" aria-hidden="true">
+    <div class="modal fade" id="addConsumptionModal" tabindex="-1" aria-labelledby="addConsumptionModalLabel" aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header bg-primary text-white">
-            <h5 class="modal-title" id="addTransactionModalLabel">Nueva Transacción</h5>
+            <h5 class="modal-title" id="addConsumptionModalLabel">Nueva Transacción</h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <form @submit.prevent="addTransaction">
+            <form @submit.prevent="addConsumption">
               <div class="mb-3">
-                <label for="transactionType" class="form-label">Tipo de Transacción</label>
-                <select class="form-select" id="transactionType" v-model="newTransaction.type" required>
+                <label for="consumptionType" class="form-label">Tipo de Transacción</label>
+                <select class="form-select" id="consumptionType" v-model="newConsumption.type" required>
                   <option value="purchase">Compra</option>
                   <option value="adjustment">Ajuste de Puntos</option>
                 </select>
@@ -180,7 +180,7 @@
               
               <div class="mb-3">
                 <label for="clientSelect" class="form-label">Cliente</label>
-                <select class="form-select" id="clientSelect" v-model="newTransaction.clientId" required>
+                <select class="form-select" id="clientSelect" v-model="newConsumption.clientId" required>
                   <option value="" disabled selected>Seleccionar cliente</option>
                   <option v-for="client in clients" :key="client.id" :value="client.clientId">
                     {{ client.name || client.email || client.phone || client.clientId }}
@@ -188,25 +188,25 @@
                 </select>
               </div>
               
-              <div class="mb-3" v-if="newTransaction.type === 'purchase'">
-                <label for="transactionAmount" class="form-label">Monto de la Compra ($)</label>
-                <input type="number" class="form-control" id="transactionAmount" v-model.number="newTransaction.amount" min="0.01" step="0.01" required>
+              <div class="mb-3" v-if="newConsumption.type === 'purchase'">
+                <label for="consumptionAmount" class="form-label">Monto de la Compra ($)</label>
+                <input type="number" class="form-control" id="consumptionAmount" v-model.number="newConsumption.amount" min="0.01" step="0.01" required>
               </div>
               
-              <div class="mb-3" v-if="newTransaction.type === 'adjustment'">
-                <label for="transactionPoints" class="form-label">Puntos</label>
-                <input type="number" class="form-control" id="transactionPoints" v-model.number="newTransaction.points" required>
+              <div class="mb-3" v-if="newConsumption.type === 'adjustment'">
+                <label for="consumptionPoints" class="form-label">Puntos</label>
+                <input type="number" class="form-control" id="consumptionPoints" v-model.number="newConsumption.points" required>
                 <small class="form-text text-muted">Usa valores negativos para restar puntos.</small>
               </div>
               
               <div class="mb-3">
-                <label for="transactionDescription" class="form-label">Descripción</label>
-                <input type="text" class="form-control" id="transactionDescription" v-model="newTransaction.description" required>
+                <label for="consumptionDescription" class="form-label">Descripción</label>
+                <input type="text" class="form-control" id="consumptionDescription" v-model="newConsumption.description" required>
               </div>
               
               <div class="d-grid">
-                <button type="submit" class="btn btn-primary" :disabled="addingTransaction">
-                  <span v-if="addingTransaction" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                <button type="submit" class="btn btn-primary" :disabled="addingConsumption">
+                  <span v-if="addingConsumption" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
                   Guardar Transacción
                 </button>
               </div>
@@ -228,13 +228,13 @@ import {
 import { db } from '@/firebase';
 
 const authStore = useAuthStore();
-const transactions = ref([]);
-const filteredTransactions = ref([]);
+const consumos = ref([]);
+const filteredConsumos = ref([]);
 const loading = ref(true);
 const searchTerm = ref('');
 const typeFilter = ref('');
 const dateFilter = ref('all');
-const selectedTransaction = ref(null);
+const selectedConsumption = ref(null);
 const clientInfo = ref(null);
 const rewardInfo = ref(null);
 const clients = ref([]);
@@ -242,26 +242,26 @@ const clients = ref([]);
 // Paginación
 const pageSize = 10;
 const currentPage = ref(1);
-const totalPages = computed(() => Math.ceil(filteredTransactions.value.length / pageSize));
-const paginatedTransactions = computed(() => {
+const totalPages = computed(() => Math.ceil(filteredConsumos.value.length / pageSize));
+const paginatedConsumos = computed(() => {
   const start = (currentPage.value - 1) * pageSize;
   const end = start + pageSize;
-  return filteredTransactions.value.slice(start, end);
+  return filteredConsumos.value.slice(start, end);
 });
 
 // Para el modal de añadir transacción
-const newTransaction = ref({
+const newConsumption = ref({
   type: 'purchase',
   clientId: '',
   amount: 0,
   points: 0,
   description: ''
 });
-const addingTransaction = ref(false);
+const addingConsumption = ref(false);
 
 // Referencias a los modales de Bootstrap
-let transactionDetailsModal = null;
-let addTransactionModal = null;
+let consumptionDetailsModal = null;
+let addConsumptionModal = null;
 
 const businessId = computed(() => authStore.businessId);
 
@@ -273,12 +273,12 @@ watch([searchTerm, typeFilter, dateFilter], () => {
 onMounted(async () => {
   if (authStore.isAuthenticated && (authStore.isBusinessAdmin || authStore.isSuperAdmin)) {
     // Inicializar modales de Bootstrap
-    transactionDetailsModal = new bootstrap.Modal(document.getElementById('transactionDetailsModal'));
-    addTransactionModal = new bootstrap.Modal(document.getElementById('addTransactionModal'));
+    consumptionDetailsModal = new bootstrap.Modal(document.getElementById('consumptionDetailsModal'));
+    addConsumptionModal = new bootstrap.Modal(document.getElementById('addConsumptionModal'));
     
     if (authStore.businessId) {
       await Promise.all([
-        loadTransactions(),
+        loadConsumos(),
         loadClients()
       ]);
       loading.value = false;
@@ -291,7 +291,7 @@ watch(
   async (newBusinessId, oldBusinessId) => {
     if (newBusinessId && newBusinessId !== oldBusinessId && authStore.isAuthenticated && (authStore.isBusinessAdmin || authStore.isSuperAdmin)) {
       await Promise.all([
-        loadTransactions(),
+        loadConsumos(),
         loadClients()
       ]);
       loading.value = false;
@@ -299,38 +299,38 @@ watch(
   }
 );
 
-async function loadTransactions() {
+async function loadConsumos() {
   try {
     // Query to subcollection 'purchases' inside the business document
-    const transactionsQuery = collection(db, "business_invoices", businessId.value, "purchases");
+    const consumosQuery = collection(db, "business_invoices", businessId.value, "purchases");
     
-    const snapshot = await getDocs(transactionsQuery);
+    const snapshot = await getDocs(consumosQuery);
     
     // Obtener datos de clientes para mostrar emails en lugar de IDs
-    const transactionsWithClientInfo = await Promise.all(snapshot.docs.map(async (docSnap) => {
-      const transaction = {
+    const consumosWithClientInfo = await Promise.all(snapshot.docs.map(async (docSnap) => {
+      const consumo = {
         id: docSnap.id,
         ...docSnap.data()
       };
       
       try {
         // Intentar obtener el email del cliente
-        const userDoc = await getDoc(doc(db, "users", transaction.clientId));
+        const userDoc = await getDoc(doc(db, "users", consumo.clientId));
         if (userDoc.exists()) {
-          transaction.clientEmail = userDoc.data().email;
-          transaction.clientName = userDoc.data().displayName;
+          consumo.clientEmail = userDoc.data().email;
+          consumo.clientName = userDoc.data().displayName;
         }
       } catch (error) {
         console.error("Error al obtener datos del cliente:", error);
       }
       
-      return transaction;
+      return consumo;
     }));
     
-    transactions.value = transactionsWithClientInfo;
-    filterTransactions();
+    consumos.value = consumosWithClientInfo;
+    filterConsumos();
   } catch (error) {
-    console.error("Error al cargar transacciones:", error);
+    console.error("Error al cargar consumos:", error);
   }
 }
 
@@ -378,23 +378,23 @@ async function loadClients() {
   }
 }
 
-function filterTransactions() {
-  let filtered = [...transactions.value];
+function filterConsumos() {
+  let filtered = [...consumos.value];
   
   // Filtrar por término de búsqueda
   if (searchTerm.value) {
     const term = searchTerm.value.toLowerCase();
-    filtered = filtered.filter(transaction => 
-      (transaction.clientEmail && transaction.clientEmail.toLowerCase().includes(term)) ||
-      (transaction.clientName && transaction.clientName.toLowerCase().includes(term)) ||
-      (transaction.clientId && transaction.clientId.toLowerCase().includes(term)) ||
-      (transaction.description && transaction.description.toLowerCase().includes(term))
+    filtered = filtered.filter(consumo => 
+      (consumo.clientEmail && consumo.clientEmail.toLowerCase().includes(term)) ||
+      (consumo.clientName && consumo.clientName.toLowerCase().includes(term)) ||
+      (consumo.clientId && consumo.clientId.toLowerCase().includes(term)) ||
+      (consumo.description && consumo.description.toLowerCase().includes(term))
     );
   }
   
   // Filtrar por tipo
   if (typeFilter.value) {
-    filtered = filtered.filter(transaction => transaction.type === typeFilter.value);
+    filtered = filtered.filter(consumo => consumo.type === typeFilter.value);
   }
   
   // Filtrar por fecha
@@ -419,30 +419,30 @@ function filterTransactions() {
         break;
     }
     
-    filtered = filtered.filter(transaction => {
-      if (!transaction.timestamp) return false;
-      const transactionDate = transaction.timestamp.toDate ? transaction.timestamp.toDate() : new Date(transaction.timestamp);
-      return transactionDate >= startDate;
+    filtered = filtered.filter(consumo => {
+      if (!consumo.timestamp) return false;
+      const consumoDate = consumo.timestamp.toDate ? consumo.timestamp.toDate() : new Date(consumo.timestamp);
+      return consumoDate >= startDate;
     });
   }
   
-  filteredTransactions.value = filtered;
+  filteredConsumos.value = filtered;
 }
 
-async function viewTransactionDetails(transaction) {
-  selectedTransaction.value = transaction;
+async function viewConsumptionDetails(consumo) {
+  selectedConsumption.value = consumo;
   
   // Cargar información del cliente
-  await loadClientInfo(transaction.clientId);
+  await loadClientInfo(consumo.clientId);
   
   // Si es un canje de premio, cargar información del premio
-  if (transaction.type === 'reward' && transaction.rewardId) {
-    await loadRewardInfo(transaction.rewardId);
+  if (consumo.type === 'reward' && consumo.rewardId) {
+    await loadRewardInfo(consumo.rewardId);
   } else {
     rewardInfo.value = null;
   }
   
-  transactionDetailsModal.show();
+  consumptionDetailsModal.show();
 }
 
 async function loadClientInfo(clientId) {
@@ -503,32 +503,32 @@ async function loadRewardInfo(rewardId) {
   }
 }
 
-function showAddTransactionModal() {
-  newTransaction.value = {
+function showAddConsumptionModal() {
+  newConsumption.value = {
     type: 'purchase',
     clientId: '',
     amount: 0,
     points: 0,
     description: ''
   };
-  addTransactionModal.show();
+  addConsumptionModal.show();
 }
 
-async function addTransaction() {
-  if (!newTransaction.value.clientId || 
-      (newTransaction.value.type === 'purchase' && newTransaction.value.amount <= 0) ||
-      (newTransaction.value.type === 'adjustment' && newTransaction.value.points === 0)) {
+async function addConsumption() {
+  if (!newConsumption.value.clientId || 
+      (newConsumption.value.type === 'purchase' && newConsumption.value.amount <= 0) ||
+      (newConsumption.value.type === 'adjustment' && newConsumption.value.points === 0)) {
     alert("Por favor, completa todos los campos requeridos con valores válidos.");
     return;
   }
   
-  addingTransaction.value = true;
+  addingConsumption.value = true;
   
   try {
     // Buscar la relación cliente-negocio
     const clientBusinessQuery = query(
       collection(db, "client_businesses"),
-      where("clientId", "==", newTransaction.value.clientId),
+      where("clientId", "==", newConsumption.value.clientId),
       where("businessId", "==", businessId.value)
     );
     
@@ -551,30 +551,30 @@ async function addTransaction() {
     const businessData = businessDoc.data();
     
     let pointsToAdd = 0;
-    let transactionData = {
-      clientId: newTransaction.value.clientId,
+    let consumoData = {
+      clientId: newConsumption.value.clientId,
       businessId: businessId.value,
       businessName: businessData.name,
-      description: newTransaction.value.description,
+      description: newConsumption.value.description,
       timestamp: serverTimestamp()
     };
     
-    if (newTransaction.value.type === 'purchase') {
+    if (newConsumption.value.type === 'purchase') {
       // Calcular puntos basados en el monto de la compra
       const pointsPerCurrency = businessData.pointsPerCurrency || 1;
-      pointsToAdd = Math.floor(newTransaction.value.amount * pointsPerCurrency);
+      pointsToAdd = Math.floor(newConsumption.value.amount * pointsPerCurrency);
       
-      transactionData = {
-        ...transactionData,
+      consumoData = {
+        ...consumoData,
         type: 'purchase',
-        amount: newTransaction.value.amount,
+        amount: newConsumption.value.amount,
         points: pointsToAdd
       };
-    } else if (newTransaction.value.type === 'adjustment') {
-      pointsToAdd = newTransaction.value.points;
+    } else if (newConsumption.value.type === 'adjustment') {
+      pointsToAdd = newConsumption.value.points;
       
-      transactionData = {
-        ...transactionData,
+      consumoData = {
+        ...consumoData,
         type: 'adjustment',
         points: pointsToAdd
       };
@@ -586,7 +586,7 @@ async function addTransaction() {
     }
     
     // Crear transacción
-    await addDoc(collection(db, "transactions"), transactionData);
+    await addDoc(collection(db, "transactions"), consumoData);
     
     // Actualizar puntos del cliente
     await updateDoc(doc(db, "client_businesses", clientBusinessDoc.id), {
@@ -595,15 +595,15 @@ async function addTransaction() {
     });
     
     // Recargar datos
-    await loadTransactions();
+    await loadConsumos();
     
     alert("Transacción registrada exitosamente.");
-    addTransactionModal.hide();
+    addConsumptionModal.hide();
   } catch (error) {
     console.error("Error al registrar transacción:", error);
     alert("Error al registrar transacción: " + error.message);
   } finally {
-    addingTransaction.value = false;
+    addingConsumption.value = false;
   }
 }
 
@@ -622,7 +622,7 @@ function formatDate(timestamp) {
 </script>
 
 <style scoped>
-.transaction-list {
+.consumption-list {
   padding-bottom: 2rem;
 }
 </style>

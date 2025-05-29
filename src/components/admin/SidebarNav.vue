@@ -116,11 +116,11 @@
             </router-link>
           </li>
 
-          <!-- Transacciones -->
+          <!-- Consumos -->
           <li class="nav-item">
-            <router-link to="/admin/business/transactions" class="nav-link" :class="{ active: $route.path === '/admin/business/transactions' }" @click="handleMobileClick">
+            <router-link to="/admin/business/consumos" class="nav-link" :class="{ active: $route.path === '/admin/business/consumos' }" @click="handleMobileClick">
               <Receipt class="me-3" :size="20" />
-              <span v-if="!collapsed">Transacciones</span>
+              <span v-if="!collapsed">Consumos</span>
             </router-link>
           </li>
 
