@@ -26,6 +26,7 @@ const { createPref } = require("./src/mercadopago");
 const { processQueueItems } = require("./src/whatsapp/queueProcessor");
 const { processImageTask } = require("./src/whatsapp/processImageTask");
 const { cleanupImagesScheduled } = require("./src/scheduled/cleanupImages");
+const { extractionConfigAPI } = require("./src/api/extractionConfigAPI");
 
 // Pasar la instancia de Firestore al servicio
 firestoreService.setFirestoreDb(db);
@@ -50,6 +51,9 @@ exports.processImageTask = processImageTask;
 
 // Exportar la función programada para limpiar imágenes antiguas
 exports.cleanupImagesScheduled = cleanupImagesScheduled;
+
+// ✅ NUEVA EXPORTACIÓN DE LA API DE CONFIGURACIÓN
+exports.extractionConfigAPI = extractionConfigAPI;
 
 // Función simple para probar que la configuración funciona
 exports.helloWorld = onRequest(
@@ -178,7 +182,9 @@ whatsappApiApp.post("/", verifySignatureMiddleware, async (req, res) => {
                   // Asegurarse de que el usuario tenga la propiedad phone
                   if (!user.phone && phone) {
                     user.phone = phone;
-                    console.log(`Asignando número de teléfono al objeto usuario: ${phone}`);
+                    console.log(
+                      `Asignando número de teléfono al objeto usuario: ${phone}`
+                    );
                   }
 
                   // Procesar la imagen (no esperamos a que termine)
@@ -189,7 +195,7 @@ whatsappApiApp.post("/", verifySignatureMiddleware, async (req, res) => {
                     WHATSAPP_API_TOKEN
                   ).catch((err) => {
                     console.error("Error procesando imagen:", err);
-                    
+
                     // Intentar enviar un mensaje de error al usuario
                     if (phone) {
                       sendWhatsAppMessage(
@@ -197,11 +203,19 @@ whatsappApiApp.post("/", verifySignatureMiddleware, async (req, res) => {
                         "Hubo un problema al procesar tu imagen. Por favor, intenta nuevamente con una foto más clara del comprobante.",
                         WHATSAPP_PHONE_NUMBER_ID,
                         WHATSAPP_API_TOKEN
-                      ).catch(msgErr => console.error("Error enviando mensaje de error:", msgErr));
+                      ).catch((msgErr) =>
+                        console.error(
+                          "Error enviando mensaje de error:",
+                          msgErr
+                        )
+                      );
                     }
                   });
                 } catch (error) {
-                  console.error("Error general en el manejo de imágenes:", error);
+                  console.error(
+                    "Error general en el manejo de imágenes:",
+                    error
+                  );
                 }
               } else if (message.type === "text") {
                 // Si es un texto, procesamos comandos o consultas

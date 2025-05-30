@@ -1,0 +1,327 @@
+// src/services/extractionConfigService.js
+
+import { useAuthStore } from "@/stores/auth";
+
+/**
+ * Servicio para gestionar configuraciones de extracción desde el frontend
+ */
+class ExtractionConfigService {
+  constructor() {
+    this.baseUrl = "/api/extraction-config";
+  }
+
+  /**
+   * Obtiene el token de autenticación
+   * @returns {Promise<string>}
+   */
+  async getAuthToken() {
+    const authStore = useAuthStore();
+    return await authStore.user.getIdToken();
+  }
+
+  /**
+   * Obtiene la configuración de extracción para un negocio
+   * @param {string} businessSlug - Slug del negocio
+   * @returns {Promise<object>}
+   */
+  async getConfig(businessSlug) {
+    try {
+      const token = await this.getAuthToken();
+      const response = await fetch(
+        `${this.baseUrl}?businessSlug=${businessSlug}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error obteniendo configuración:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Guarda o actualiza la configuración de extracción
+   * @param {string} businessSlug - Slug del negocio
+   * @param {object} config - Configuración a guardar
+   * @param {string} [testText] - Texto de prueba opcional
+   * @returns {Promise<object>}
+   */
+  async saveConfig(businessSlug, config, testText = null) {
+    try {
+      const token = await this.getAuthToken();
+      const response = await fetch(this.baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          businessSlug,
+          config,
+          testText,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Error ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error guardando configuración:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Genera una configuración automática basada en comprobantes anteriores
+   * @param {string} businessSlug - Slug del negocio
+   * @returns {Promise<object>}
+   */
+  async generateAutoConfig(businessSlug) {
+    try {
+      const token = await this.getAuthToken();
+      const response = await fetch(
+        `${this.baseUrl}?businessSlug=${businessSlug}&action=generate`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error generando configuración automática:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtiene estadísticas de rendimiento de la configuración
+   * @param {string} businessSlug - Slug del negocio
+   * @returns {Promise<object>}
+   */
+  async getStats(businessSlug) {
+    try {
+      const token = await this.getAuthToken();
+      const response = await fetch(
+        `${this.baseUrl}?businessSlug=${businessSlug}&action=stats`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error obteniendo estadísticas:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Prueba una configuración con texto de ejemplo
+   * @param {string} businessSlug - Slug del negocio
+   * @param {object} config - Configuración a probar
+   * @param {string} testText - Texto de ejemplo
+   * @returns {Promise<object>}
+   */
+  async testConfig(businessSlug, config, testText) {
+    try {
+      const token = await this.getAuthToken();
+      const response = await fetch(this.baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          businessSlug,
+          config,
+          testText,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || `Error ${response.status}`,
+          testResult: data.testResult || null,
+        };
+      }
+
+      return {
+        success: true,
+        ...data,
+      };
+    } catch (error) {
+      console.error("Error probando configuración:", error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Elimina la configuración de extracción de un negocio
+   * @param {string} businessSlug - Slug del negocio
+   * @returns {Promise<object>}
+   */
+  async deleteConfig(businessSlug) {
+    try {
+      const token = await this.getAuthToken();
+      const response = await fetch(
+        `${this.baseUrl}?businessSlug=${businessSlug}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error eliminando configuración:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Obtiene todas las configuraciones (solo para super admins)
+   * @returns {Promise<object>}
+   */
+  async getAllConfigs() {
+    try {
+      const token = await this.getAuthToken();
+      const response = await fetch(`${this.baseUrl}?action=all`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error("Error obteniendo todas las configuraciones:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Valida un patrón regex antes de guardarlo
+   * @param {string} pattern - Patrón a validar
+   * @returns {boolean}
+   */
+  validateRegexPattern(pattern) {
+    try {
+      new RegExp(pattern, "i");
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Limpia un array de configuración eliminando elementos vacíos
+   * @param {string[]} array - Array a limpiar
+   * @returns {string[]}
+   */
+  cleanConfigArray(array) {
+    return array.filter((item) => item && item.trim().length > 0);
+  }
+
+  /**
+   * Crea una configuración vacía por defecto
+   * @returns {object}
+   */
+  createEmptyConfig() {
+    return {
+      aliases: [],
+      addressPatterns: [],
+      specificAmountPatterns: [],
+      invoicePatterns: [],
+      version: "1.0",
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Clona una configuración para edición
+   * @param {object} config - Configuración a clonar
+   * @returns {object}
+   */
+  cloneConfig(config) {
+    return {
+      aliases: [...(config.aliases || [])],
+      addressPatterns: [...(config.addressPatterns || [])],
+      specificAmountPatterns: [...(config.specificAmountPatterns || [])],
+      invoicePatterns: [...(config.invoicePatterns || [])],
+      version: config.version || "1.0",
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Compara dos configuraciones para detectar cambios
+   * @param {object} config1 - Primera configuración
+   * @param {object} config2 - Segunda configuración
+   * @returns {boolean}
+   */
+  hasConfigChanged(config1, config2) {
+    const clean1 = {
+      aliases: this.cleanConfigArray(config1.aliases || []),
+      addressPatterns: this.cleanConfigArray(config1.addressPatterns || []),
+      specificAmountPatterns: this.cleanConfigArray(
+        config1.specificAmountPatterns || []
+      ),
+      invoicePatterns: this.cleanConfigArray(config1.invoicePatterns || []),
+    };
+
+    const clean2 = {
+      aliases: this.cleanConfigArray(config2.aliases || []),
+      addressPatterns: this.cleanConfigArray(config2.addressPatterns || []),
+      specificAmountPatterns: this.cleanConfigArray(
+        config2.specificAmountPatterns || []
+      ),
+      invoicePatterns: this.cleanConfigArray(config2.invoicePatterns || []),
+    };
+
+    return JSON.stringify(clean1) !== JSON.stringify(clean2);
+  }
+}
+
+// Crear instancia singleton
+export const extractionConfigService = new ExtractionConfigService();
+
+// Export default para uso directo
+export default extractionConfigService;

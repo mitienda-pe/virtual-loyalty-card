@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import { getAuth } from "firebase/auth";
 import { useAuthStore } from "@/stores/auth";
 import LoyaltyCard from "@/components/LoyaltyCard.vue";
+import BusinessExtractionConfig from "@/views/admin/BusinessExtractionConfig.vue";
 
 const routes = [
   {
@@ -178,7 +179,6 @@ const routes = [
         path: "rewards",
         name: "ClientRewards",
         // (Ruta eliminada: RewardList.vue ya no existe)
-
       },
     ],
   },
@@ -213,12 +213,60 @@ const routes = [
     name: "DataDeletion",
     component: () => import("@/components/DataDeletion.vue"),
   },
+  {
+    path: "/admin/businesses/:businessSlug/extraction-config",
+    name: "BusinessExtractionConfig",
+    component: BusinessExtractionConfig,
+    meta: {
+      requiresAuth: true,
+      roles: ["admin", "business-admin"],
+      title: "Configuración de Extracción",
+    },
+    beforeEnter: async (to, from, next) => {
+      const authStore = useAuthStore();
+
+      // Verificar que el usuario tenga acceso al negocio específico
+      if (authStore.user?.role === "business-admin") {
+        // Verificar que sea admin de este negocio específico
+        const hasAccess = await checkBusinessAccess(
+          authStore.user.uid,
+          to.params.businessSlug
+        );
+        if (!hasAccess) {
+          next("/unauthorized");
+          return;
+        }
+      }
+
+      next();
+    },
+  },
 ];
 
 const router = createRouter({
   history: createWebHistory(),
   routes,
 });
+
+// Función auxiliar para verificar acceso al negocio
+async function checkBusinessAccess(userId, businessSlug) {
+  try {
+    const token = await useAuthStore().user.getIdToken();
+    const response = await fetch(
+      `/api/businesses/${businessSlug}/access-check`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    return response.ok;
+  } catch (error) {
+    console.error("Error verificando acceso al negocio:", error);
+    return false;
+  }
+}
 
 // Protección de rutas
 router.beforeEach(async (to, from, next) => {
@@ -247,7 +295,11 @@ router.beforeEach(async (to, from, next) => {
     return;
   }
 
-  if (to.meta.requiresBusinessAdmin && !authStore.isBusinessAdmin && !authStore.isSuperAdmin) {
+  if (
+    to.meta.requiresBusinessAdmin &&
+    !authStore.isBusinessAdmin &&
+    !authStore.isSuperAdmin
+  ) {
     next("/admin");
     return;
   }

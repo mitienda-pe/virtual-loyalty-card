@@ -58,17 +58,27 @@
         </div>
       </div>
 
-      <!-- Imágenes -->
+      <!-- Diseño -->
       <div class="bg-white shadow sm:rounded-lg">
         <div class="px-4 py-5 sm:p-6">
           <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">
-            Imágenes
+            Diseño
           </h3>
-          <div class="grid grid-cols-1 gap-y-6 sm:grid-cols-2 gap-x-4">
+          <div class="grid grid-cols-1 gap-y-6 sm:grid-cols-2 gap-x-4 mb-6">
             <ImageUpload label="Logo del negocio" :preview="logoPreview" :error="logoError"
               @change="handleLogoChange" />
             <ImageUpload label="Imagen de portada" :preview="coverPreview" :error="coverError"
               @change="handleCoverChange" />
+          </div>
+          <!-- Color de fondo -->
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Color de fondo</label>
+            <input type="color" v-model="form.backgroundColor" class="h-10 w-20" />
+          </div>
+          <!-- Icono -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Icono de la tarjeta</label>
+            <IconPicker v-model="form.icon" />
           </div>
         </div>
       </div>
@@ -87,20 +97,6 @@
           <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">
             Configuración de la tarjeta de fidelización
           </h3>
-
-          <!-- Icono y color -->
-          <div class="mb-6">
-            <div class="mb-6">
-              <label class="block text-sm font-medium text-gray-700 mb-2">
-                Icono y color de fondo
-              </label>
-              <div class="flex space-x-4 items-center mb-4">
-                <input type="color" v-model="form.config.backgroundColor" class="h-10 w-20" />
-                <span class="text-sm text-gray-600">Color de fondo</span>
-              </div>
-              <IconPicker v-model="form.config.icon" />
-            </div>
-          </div>
 
           <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
             <div>
@@ -241,116 +237,117 @@ const coverFile = ref(null);
 const isEdit = computed(() => !!props.businessSlug || route.params.id !== undefined);
 
 const form = ref({
-    name: '',
-    businessName: '',
-    slug: '',
-    ruc: '',
-    description: '',
-    address: '',
-    city: '',
-    phone: '',
-    logo: '',
-    cover: '',
-    config: {
-        purchasesRequired: 10,
-        timeLimit: 60,
-        expirationDays: 90,
-        icon: 'cafe',
-        backgroundColor: '#ffffff',
-        reward: '',
-        minAmount: 0,
-        rewards: [],
-    }
+  name: '',
+  businessName: '',
+  slug: '',
+  ruc: '',
+  description: '',
+  address: '',
+  city: '',
+  phone: '',
+  logo: '',
+  cover: '',
+  backgroundColor: '#ffffff',
+  icon: 'cafe',
+  config: {
+    purchasesRequired: 10,
+    minAmount: 0,
+    rewards: [],
+    timeLimit: 0,
+    expirationDays: 90,
+    reward: ''
+  }
 });
 
 const handleLogoChange = (file) => {
-    logoError.value = '';
-    logoFile.value = file;
+  logoError.value = '';
+  logoFile.value = file;
 
-    if (file) {
-        logoPreview.value = URL.createObjectURL(file);
-    } else {
-        logoPreview.value = form.value.logo;
-    }
+  if (file) {
+    logoPreview.value = URL.createObjectURL(file);
+  } else {
+    logoPreview.value = form.value.logo;
+  }
 };
 
 const handleCoverChange = (file) => {
-    coverError.value = '';
-    coverFile.value = file;
+  coverError.value = '';
+  coverFile.value = file;
 
-    if (file) {
-        coverPreview.value = URL.createObjectURL(file);
-    } else {
-        coverPreview.value = form.value.cover;
-    }
+  if (file) {
+    coverPreview.value = URL.createObjectURL(file);
+  } else {
+    coverPreview.value = form.value.cover;
+  }
 };
 
 const uploadImage = async (file, path) => {
-    if (!file) return null;
+  if (!file) return null;
 
-    const fileRef = storageRef(storage, `businesses/${path}`);
-    await uploadBytes(fileRef, file);
-    return await getDownloadURL(fileRef);
+  const fileRef = storageRef(storage, `businesses/${path}`);
+  await uploadBytes(fileRef, file);
+  return await getDownloadURL(fileRef);
 };
 
 const loadBusiness = async () => {
-    // Usar businessSlug (prop) si está presente, si no usar route.params.id
-    const businessId = props.businessSlug || route.params.id;
-    if (!businessId) return;
-
-    loading.value = true;
-    try {
-        const docRef = doc(db, 'businesses', businessId);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-            form.value = {
-                ...docSnap.data(),
-                config: {
-                    purchasesRequired: docSnap.data().config?.purchasesRequired || 10,
-                    timeLimit: docSnap.data().config?.timeLimit || 60,
-                    expirationDays: docSnap.data().config?.expirationDays || 90,
-                    icon: docSnap.data().config?.icon || 'cafe',
-                    backgroundColor: docSnap.data().config?.backgroundColor || '#ffffff',
-                    reward: docSnap.data().config?.reward || '',
-                    minAmount: docSnap.data().config?.minAmount || 0,
-                    rewards: docSnap.data().config?.rewards || []
-                }
-            };
-            logoPreview.value = docSnap.data().logo;
-            coverPreview.value = docSnap.data().cover;
-        }
-    } catch (error) {
-        console.error('Error al cargar negocio:', error);
-        alert('Error al cargar los datos del negocio');
-    } finally {
-        loading.value = false;
-    }
+  if (!props.businessSlug) return;
+  loading.value = true;
+  const docRef = doc(db, 'businesses', props.businessSlug);
+  const docSnap = await getDoc(docRef);
+  if (docSnap.exists()) {
+    const data = docSnap.data();
+    form.value = {
+      ...form.value,
+      ...data,
+      config: {
+        ...form.value.config,
+        ...data.config
+      },
+      backgroundColor: data.backgroundColor || '#ffffff',
+      icon: data.icon || 'cafe',
+    };
+    logoPreview.value = form.value.logo;
+    coverPreview.value = form.value.cover;
+  }
+  loading.value = false;
 };
 
 const handleSubmit = async () => {
-    loading.value = true;
-    try {
-        // Subir imágenes si han sido cambiadas
-        if (logoFile.value) {
-            form.value.logo = await uploadImage(logoFile.value, `${form.value.slug}/logo`);
-        }
-        if (coverFile.value) {
-            form.value.cover = await uploadImage(coverFile.value, `${form.value.slug}/cover`);
-        }
-
-        if (isEdit.value) {
-            await updateDoc(doc(db, 'businesses', route.params.id), form.value);
-        } else {
-            await setDoc(doc(db, 'businesses', form.value.slug), form.value);
-        }
-        router.push('/admin/businesses');
-    } catch (error) {
-        console.error('Error al guardar negocio:', error);
-        alert('Error al guardar el negocio');
-    } finally {
-        loading.value = false;
+  loading.value = true;
+  try {
+    const businessData = {
+      name: form.value.name,
+      businessName: form.value.businessName,
+      slug: form.value.slug,
+      ruc: form.value.ruc,
+      description: form.value.description,
+      logo: form.value.logo,
+      cover: form.value.cover,
+      address: form.value.address,
+      city: form.value.city,
+      phone: form.value.phone,
+      backgroundColor: form.value.backgroundColor,
+      icon: form.value.icon,
+      config: {
+        purchasesRequired: form.value.config.purchasesRequired,
+        minAmount: form.value.config.minAmount,
+        rewards: form.value.config.rewards,
+        timeLimit: form.value.config.timeLimit,
+        expirationDays: form.value.config.expirationDays,
+        reward: form.value.config.reward,
+      }
+    };
+    if (props.businessSlug) {
+      await updateDoc(doc(db, 'businesses', props.businessSlug), businessData);
+    } else {
+      await setDoc(doc(db, 'businesses', form.value.slug), businessData);
     }
+    router.push('/admin/business/dashboard');
+  } catch (err) {
+    console.error(err);
+    alert('Error al guardar el negocio');
+  }
+  loading.value = false;
 };
 
 onMounted(loadBusiness);

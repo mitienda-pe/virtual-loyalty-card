@@ -11,6 +11,8 @@ const firestoreService = require("../services/firestoreService");
 const queueService = require("../services/queueService");
 const { createImageProcessingTask } = require('../services/cloudTasksService');
 const { storeReceiptImage } = require('../services/storageService');
+const { businessConfigService } = require("../services/businessConfigService");
+const admin = require("firebase-admin");
 
 // Alias para funciones de Firestore para mayor legibilidad
 const {
@@ -22,7 +24,7 @@ const {
 } = firestoreService;
 
 /**
- * Procesa un mensaje de imagen (comprobante de pago)
+ * Procesa un mensaje de imagen (comprobante de pago) con sistema configurable
  * @param {object} message - Mensaje de WhatsApp
  * @param {object} user - Información del usuario
  * @param {string} phoneNumberId - ID del número de teléfono de WhatsApp
@@ -38,7 +40,7 @@ async function processImageMessage(
   metadata = {}
 ) {
   try {
-    console.log("🖼️ Iniciando procesamiento de imagen");
+    console.log("🖼️ Iniciando procesamiento de imagen con sistema configurable");
     const imageId = message.image.id;
     console.log("🆔 ID de imagen:", imageId);
     
@@ -85,8 +87,6 @@ async function processImageMessage(
     user.profile.phoneNumber = normalizedPhone; // Agregar al perfil también
     console.log(`📱 Número de teléfono normalizado: ${normalizedPhone}`);
     
-    // Ya enviamos un mensaje de confirmación en el webhook principal
-
     // Establecer un tiempo límite para el procesamiento directo
     const processingTimeout = setTimeout(() => {
       throw new Error("Timeout: El procesamiento está tomando demasiado tiempo");
@@ -106,7 +106,6 @@ async function processImageMessage(
         "bytes"
       );
 
-      // Intentar procesar la imagen directamente (procesamiento rápido)
       // Procesar la imagen con Google Vision
       console.log("🔍 Procesando imagen con Vision API...");
       let extractedText;
@@ -125,117 +124,159 @@ async function processImageMessage(
         throw new Error(`Error procesando imagen con Vision API: ${visionError.message}`);
       }
       
-      // Extraer información relevante del texto
-      console.log("🔎 Extrayendo datos del texto...");
-      const extractedData = extractRUCAndAmount(extractedText);
-      console.log("📊 Datos extraídos:", JSON.stringify(extractedData, null, 2));
-
-      // Verificar si tenemos el RUC, monto y número de comprobante necesarios
-      if (!extractedData.ruc || !extractedData.amount || !extractedData.invoiceId) {
-        console.log("❌ Información insuficiente en el comprobante (RUC, monto o número de comprobante)");
+      // ========== NUEVA LÓGICA CON SISTEMA CONFIGURABLE ==========
+      
+      // Paso 1: Extracción inicial para identificar el negocio
+      console.log("🔎 Extracción inicial para identificar negocio...");
+      const initialExtraction = extractRUCAndAmount(extractedText);
+      
+      let businessConfig = null;
+      let finalExtraction = initialExtraction;
+      
+      // Paso 2: Si encontramos RUC, buscar configuración específica del negocio
+      if (initialExtraction.ruc) {
+        console.log("🔍 Buscando negocio y configuración específica...");
         
-        // Normalizar el número de teléfono para usarlo en el almacenamiento
-        const normalizedPhoneForStorage = normalizePhoneNumber(user.phone);
+        // Buscar el negocio por RUC
+        const business = await findBusinessByRUC(initialExtraction.ruc);
         
-        // Almacenar la imagen para análisis posterior, incluso si falta información
+        if (business) {
+          // Obtener configuración específica del negocio
+          businessConfig = await businessConfigService.getExtractionConfig(business.slug);
+          
+          if (businessConfig) {
+            console.log(`🎯 Usando configuración específica para: ${business.slug}`);
+            
+            // Re-extraer con configuración específica
+            finalExtraction = extractRUCAndAmount(
+              extractedText, 
+              business.slug, 
+              businessConfig
+            );
+            
+            // Asegurar que mantenemos los datos del negocio
+            finalExtraction.businessSlug = business.slug;
+            finalExtraction.businessName = business.name;
+          } else {
+            console.log(`📋 No hay configuración específica para: ${business.slug}, usando patrones base`);
+            finalExtraction.businessSlug = business.slug;
+            finalExtraction.businessName = business.name;
+          }
+        } else {
+          console.log("❌ Negocio no registrado con RUC:", initialExtraction.ruc);
+          
+          // Almacenar imagen para análisis posterior
+          try {
+            await storeReceiptImage(
+              imageBuffer,
+              "unregistered_business",
+              user.phone,
+              `ruc_${initialExtraction.ruc}_${Date.now()}`
+            );
+          } catch (storageError) {
+            console.error("⚠️ Error almacenando imagen de negocio no registrado:", storageError.message);
+          }
+          
+          await sendWhatsAppMessage(
+            user.phone,
+            `Lo sentimos, el negocio con RUC ${initialExtraction.ruc} no está registrado en nuestro sistema.`,
+            phoneNumberId,
+            apiToken
+          );
+          clearTimeout(processingTimeout);
+          return;
+        }
+      } else {
+        console.log("⚠️ No se pudo extraer RUC del comprobante");
+        
+        // Intentar identificar el negocio por nombre usando configuraciones existentes
+        const possibleBusiness = await identifyBusinessByText(extractedText);
+        
+        if (possibleBusiness) {
+          console.log(`🎯 Negocio identificado por texto: ${possibleBusiness.slug}`);
+          
+          businessConfig = await businessConfigService.getExtractionConfig(possibleBusiness.slug);
+          
+          if (businessConfig) {
+            finalExtraction = extractRUCAndAmount(
+              extractedText, 
+              possibleBusiness.slug, 
+              businessConfig
+            );
+          }
+          
+          finalExtraction.businessSlug = possibleBusiness.slug;
+          finalExtraction.businessName = possibleBusiness.name;
+        }
+      }
+      
+      // Verificar que tenemos la información mínima necesaria
+      if (!finalExtraction.ruc || !finalExtraction.amount || !finalExtraction.invoiceId) {
+        console.log("❌ Información insuficiente después de extracción configurable");
+        
+        // Almacenar imagen para análisis posterior
         try {
           await storeReceiptImage(
             imageBuffer,
-            "unidentified", // No tenemos RUC
-            normalizedPhoneForStorage,
-            `missing_data_${Date.now()}`
+            finalExtraction.businessSlug || "insufficient_data",
+            user.phone,
+            `insufficient_${Date.now()}`
           );
-        } catch (imgErr) {
-          console.error("Error almacenando imagen sin RUC/monto/comprobante:", imgErr);
+        } catch (storageError) {
+          console.error("⚠️ Error almacenando imagen con datos insuficientes:", storageError.message);
         }
 
         let missingFields = [];
-        if (!extractedData.ruc) missingFields.push('RUC');
-        if (!extractedData.amount) missingFields.push('monto');
-        if (!extractedData.invoiceId) missingFields.push('número de comprobante');
+        if (!finalExtraction.ruc) missingFields.push('RUC');
+        if (!finalExtraction.amount) missingFields.push('monto');
+        if (!finalExtraction.invoiceId) missingFields.push('número de comprobante');
 
         await sendWhatsAppMessage(
-          normalizedPhoneForStorage,
+          user.phone,
           `No se pudo identificar ${missingFields.join(', ')} en tu comprobante. Por favor, asegúrate de que la imagen sea legible y que el comprobante sea válido.`,
           phoneNumberId,
           apiToken
         );
+        clearTimeout(processingTimeout);
         return;
       }
-
-      console.log("📝 Texto extraído:", extractedText.substring(0, 200) + "...");
-
-      // Buscar el negocio por RUC en la base de datos
-      console.log("🔍 Buscando negocio con RUC:", extractedData.ruc);
-      const business = await findBusinessByRUC(extractedData.ruc);
-
-      if (!business) {
-        console.log("❌ Negocio no registrado con RUC:", extractedData.ruc);
-        
-        // Almacenar la imagen para análisis posterior, incluso si el negocio no está registrado
-        try {
-          await storeReceiptImage(
-            imageBuffer,
-            "unregistered_business",
-            user.phone,
-            `unregistered_ruc_${extractedData.ruc}_${Date.now()}`
-          );
-          console.log("📸 Imagen almacenada para análisis posterior (negocio no registrado)");
-        } catch (storageError) {
-          console.error("⚠️ Error almacenando imagen de negocio no registrado:", storageError.message);
-          // No interrumpimos el flujo por un error de almacenamiento
-        }
-        
-        await sendWhatsAppMessage(
-          user.phone,
-          `Lo sentimos, el negocio con RUC ${extractedData.ruc} no está registrado en nuestro sistema.`,
-          phoneNumberId,
-          apiToken
-        );
-        clearTimeout(processingTimeout); // Limpiar el timeout
-        return;
-      }
-
-      // Usar el slug del negocio desde la base de datos
-      extractedData.businessSlug = business.slug || extractedData.businessSlug;
-      extractedData.businessName = business.name || extractedData.businessName;
       
-      // Almacenar la imagen en Firebase Storage
+      // Registro de confianza en la extracción
+      console.log(`📊 Extracción completada con confianza: ${finalExtraction.confidence}%`);
+      
+      if (finalExtraction.confidence < 50) {
+        console.warn(`⚠️ Baja confianza en extracción (${finalExtraction.confidence}%), puede necesitar revisión manual`);
+      }
+      
+      // Almacenar imagen con metadatos de configuración
       let receiptImageUrl = null;
       try {
         console.log("📸 Almacenando imagen del recibo en Firebase Storage...");
-        
-        // Crear un ID único y descriptivo para la imagen
-        const imageId = `${extractedData.ruc}_${extractedData.invoiceNumber || 'receipt'}_${Date.now()}`;
-        
         const storageResult = await storeReceiptImage(
           imageBuffer,
-          extractedData.businessSlug,
+          finalExtraction.businessSlug,
           user.phone,
-          imageId
+          `config_${businessConfig ? 'custom' : 'base'}_${Date.now()}`
         );
         
         if (storageResult) {
           receiptImageUrl = storageResult.url;
           console.log("✅ Imagen almacenada correctamente:", receiptImageUrl);
-        } else {
-          console.warn("⚠️ No se pudo almacenar la imagen, continuando sin URL de imagen");
         }
       } catch (storageError) {
         console.error("⚠️ Error almacenando imagen:", storageError.message);
-        // No interrumpimos el flujo por un error de almacenamiento
       }
 
-      // Verificar si el recibo ya ha sido registrado
+      // Verificar duplicados
       console.log("🔄 Verificando si el comprobante es duplicado...");
       const isDuplicate = await isDuplicateReceipt(
-        extractedData.businessSlug,
+        finalExtraction.businessSlug,
         user.phone,
-        extractedData.amount,
-        receiptImageUrl, // Ahora pasamos la URL de la imagen
+        finalExtraction.amount,
+        receiptImageUrl,
         {
-          ruc: extractedData.ruc,
-          invoiceNumber: extractedData.invoiceNumber,
+          ruc: finalExtraction.ruc,
+          invoiceNumber: finalExtraction.invoiceId,
         }
       );
 
@@ -247,65 +288,42 @@ async function processImageMessage(
           phoneNumberId,
           apiToken
         );
-        clearTimeout(processingTimeout); // Limpiar el timeout
+        clearTimeout(processingTimeout);
         return;
       }
 
-      // Obtener URL de la imagen para guardarla
-      console.log("📸 Obteniendo URL de la imagen...");
-      let imageUrl = null;
-      try {
-        imageUrl = await getMediaUrl(imageId, apiToken);
-      } catch (mediaError) {
-        console.warn("⚠️ No se pudo obtener la URL de la imagen, continuando sin ella:", mediaError.message);
-        // Continuamos sin la URL de la imagen, no es crítico para el proceso
-      }
-
-      // Registrar la compra con URL de imagen si está disponible
+      // Registrar la compra
       console.log("💾 Registrando compra en Firestore...");
       const result = await registerPurchase(
-        extractedData.businessSlug,
+        finalExtraction.businessSlug,
         user.phone,
-        extractedData.amount,
-        receiptImageUrl, // Ahora pasamos la URL de la imagen almacenada
+        finalExtraction.amount,
+        receiptImageUrl,
         {
-          ruc: extractedData.ruc,
-          invoiceNumber: extractedData.invoiceNumber,
-          businessName: extractedData.businessName,
-          address: extractedData.address,
-          customerName: user.name || (user.profile && user.profile.name) || user.displayName || user.fullName || user.given_name || user.phone || "—",
+          ruc: finalExtraction.ruc,
+          invoiceNumber: finalExtraction.invoiceId,
+          businessName: finalExtraction.businessName,
+          address: finalExtraction.address,
+          customerName: user.name || "Cliente",
           verified: true,
           processedFromQueue: false,
-          queueId: null,
-          hasStoredImage: !!receiptImageUrl, // Indicador de si tenemos imagen almacenada
-          extractedText: extractedText, // Texto extraído completo
-          vendor: extractedData.vendor,
-          purchaseDate: extractedData.purchaseDate,
-          items: extractedData.items || [],
-          fullText: extractedText // Respaldo del texto
+          configUsed: businessConfig ? 'custom' : 'base',
+          extractionConfidence: finalExtraction.confidence,
+          hasStoredImage: !!receiptImageUrl
         }
       );
 
-      // Obtener información actualizada de puntos
-      console.log("🔢 Obteniendo información de puntos...");
-      const pointsInfo = await getCustomerPointsInfo(
-        user.phone, // Usar el número de teléfono normalizado en lugar del ID
-        extractedData.businessSlug
-      );
-
-      // Normalizar el número de teléfono
-      const normalizedPhone = normalizePhoneNumber(user.phone);
-
       // Crear mensaje de confirmación
+      const normalizedPhone = normalizePhoneNumber(user.phone);
       const confirmationMessage = `¡Gracias por tu compra en ${
-        extractedData.businessName || business.name || extractedData.businessSlug
+        finalExtraction.businessName || finalExtraction.businessSlug
       }!
 
 🧯 Comprobante registrado correctamente
-💰 Monto: S/ ${extractedData.amount}
+💰 Monto: S/ ${finalExtraction.amount}
 📍 Dirección: ${
-        extractedData.address && extractedData.address !== "CAJA"
-          ? extractedData.address
+        finalExtraction.address && finalExtraction.address !== "CAJA"
+          ? finalExtraction.address
           : "No disponible"
       }
 
@@ -313,7 +331,7 @@ async function processImageMessage(
 🛒 Total de compras: ${result.customer?.purchaseCount || 1}
 
 Ver tu tarjeta de fidelidad: https://asiduo.club/${
-        extractedData.businessSlug
+        finalExtraction.businessSlug
       }/${normalizedPhone}`;
 
       // Enviar mensaje de confirmación
@@ -326,6 +344,7 @@ Ver tu tarjeta de fidelidad: https://asiduo.club/${
       
       // Limpiar el timeout ya que el procesamiento se completó correctamente
       clearTimeout(processingTimeout);
+      
     } catch (processingError) {
       // Limpiar el timeout ya que vamos a manejar el error
       clearTimeout(processingTimeout);
@@ -379,53 +398,52 @@ Ver tu tarjeta de fidelidad: https://asiduo.club/${
       // Intentar usar Cloud Tasks primero
       let taskId = null;
       try {
-        console.log('🚀 Intentando crear tarea en Cloud Tasks...');
-        taskId = await createImageProcessingTask(taskData, 0); // Sin delay
+        taskId = await createImageProcessingTask(taskData);
         if (taskId) {
           console.log(`✅ Imagen agregada a Cloud Tasks con ID: ${taskId}`);
-          // Enviar mensaje de confirmación
-          await sendWhatsAppMessage(
-            user.phone,
-            "Tu comprobante está siendo procesado en segundo plano. Te notificaremos cuando esté listo (esto puede tomar unos minutos).",
-            phoneNumberId,
-            apiToken
-          );
-          return; // Salir exitosamente
         }
       } catch (cloudTasksError) {
-        console.error("Error al crear tarea en Cloud Tasks:", cloudTasksError.message);
-        // Continuar con el mecanismo de respaldo
+        console.error("Error al crear tarea en Cloud Tasks:", cloudTasksError);
+        // No lanzamos el error para poder usar el mecanismo de respaldo
       }
       
       // Si Cloud Tasks falló o no está disponible, usar la cola tradicional de Firestore
-      console.log("Cloud Tasks no disponible o falló, usando cola de respaldo de Firestore");
-      try {
-        const queueId = await queueService.addToQueue({
-          ...taskData,
-          imageBuffer, // Usar el buffer original para la cola de respaldo
-          cloudTasksAttempted: true, // Indicar que se intentó usar Cloud Tasks primero
-          cloudTasksFailed: !taskId // Indicar si Cloud Tasks falló
-        });
-        console.log(`✅ Imagen agregada a la cola de respaldo con ID: ${queueId}`);
-        
-        // Informar al usuario que el procesamiento continuará en segundo plano
-        await sendWhatsAppMessage(
-          user.phone,
-          "Tu comprobante está siendo procesado en segundo plano. Te notificaremos cuando esté listo (esto puede tomar unos minutos).",
-          phoneNumberId,
-          apiToken
-        );
-      } catch (queueError) {
-        console.error("Error al agregar a la cola de respaldo:", queueError);
-        // En este caso sí lanzamos el error porque es nuestro último recurso
-        await sendWhatsAppMessage(
-          user.phone,
-          "Lo siento, hay un problema temporal con el procesamiento de comprobantes. Por favor, inténtalo nuevamente en unos minutos.",
-          phoneNumberId,
-          apiToken
-        );
-        throw queueError;
+      if (!taskId) {
+        console.log("Cloud Tasks no disponible o falló, usando cola de respaldo de Firestore");
+        try {
+          const queueId = await queueService.addToQueue({
+            ...taskData,
+            imageBuffer, // Usar el buffer original para la cola de respaldo
+            cloudTasksAttempted: true // Indicar que se intentó usar Cloud Tasks primero
+          });
+          console.log(`✅ Imagen agregada a la cola de respaldo con ID: ${queueId}`);
+        } catch (queueError) {
+          console.error("Error al agregar a la cola de respaldo:", queueError);
+          throw queueError; // En este caso sí lanzamos el error porque es nuestro último recurso
+        }
+      } else {
+        // Si Cloud Tasks funcionó, también agregamos a la cola tradicional como respaldo
+        try {
+          const queueId = await queueService.addToQueue({
+            ...taskData,
+            imageBuffer, // Usar el buffer original para la cola de respaldo
+            taskId, // Agregar referencia al taskId de Cloud Tasks
+            isBackup: true // Indicar que esta es una copia de respaldo
+          });
+          console.log(`✅ Imagen también agregada a la cola de respaldo con ID: ${queueId}`);
+        } catch (queueError) {
+          console.error("Error al agregar a la cola de respaldo:", queueError);
+          // No lanzamos el error para no interrumpir el flujo principal
+        }
       }
+      
+      // Informar al usuario que el procesamiento continuará en segundo plano
+      await sendWhatsAppMessage(
+        user.phone,
+        "Tu comprobante está siendo procesado en segundo plano debido a su complejidad. Te notificaremos cuando esté listo (esto puede tomar unos minutos).",
+        phoneNumberId,
+        apiToken
+      );
     }
   } catch (error) {
     console.error("❌ Error general procesando imagen:", error.message);
@@ -479,6 +497,56 @@ Ver tu tarjeta de fidelidad: https://asiduo.club/${
     } catch (sendError) {
       console.error("Error enviando mensaje de error:", sendError.message);
     }
+  }
+}
+
+/**
+ * Intenta identificar un negocio por el texto del comprobante cuando no hay RUC
+ * @param {string} text - Texto extraído del comprobante
+ * @returns {Promise<object|null>} - Datos del negocio identificado o null
+ */
+async function identifyBusinessByText(text) {
+  try {
+    console.log("🔍 Intentando identificar negocio por texto...");
+    
+    // Obtener todas las configuraciones existentes
+    const allConfigs = await businessConfigService.getAllExtractionConfigs();
+    
+    const textLower = text.toLowerCase();
+    
+    // Buscar coincidencias con aliases de negocios
+    for (const [businessSlug, configData] of Object.entries(allConfigs)) {
+      const config = configData.config;
+      
+      if (config.aliases && Array.isArray(config.aliases)) {
+        for (const alias of config.aliases) {
+          if (textLower.includes(alias.toLowerCase()) || 
+              alias.toLowerCase().includes(textLower.split('\n')[0].toLowerCase())) {
+            
+            console.log(`✅ Negocio identificado por alias: ${businessSlug}`);
+            
+            // Obtener datos completos del negocio
+            const businessDoc = await admin.firestore()
+              .collection('businesses')
+              .doc(businessSlug)
+              .get();
+            
+            if (businessDoc.exists) {
+              return {
+                slug: businessSlug,
+                ...businessDoc.data()
+              };
+            }
+          }
+        }
+      }
+    }
+    
+    console.log("⚠️ No se pudo identificar el negocio por texto");
+    return null;
+  } catch (error) {
+    console.error("❌ Error identificando negocio por texto:", error);
+    return null;
   }
 }
 
@@ -570,7 +638,7 @@ async function sendPointsInfo(user, phoneNumberId, apiToken) {
         message += `Puntos: ${business.points}\n`;
         message += `Compras: ${business.purchases}\n`;
         message += `Total gastado: S/ ${business.totalSpent.toFixed(2)}\n`;
-        message += `Ver tarjeta: https://virtual-loyalty-card-e37c9.web.app/card/${
+        message += `Ver tarjeta: https://asiduo.club/${
           business.slug
         }/${user.phone.replace("+", "")}\n`;
       }
@@ -612,4 +680,5 @@ module.exports = {
   processTextMessage,
   sendPointsInfo,
   sendHelpInfo,
+  identifyBusinessByText,
 };

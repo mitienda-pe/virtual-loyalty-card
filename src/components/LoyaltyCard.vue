@@ -1,7 +1,7 @@
 <!-- src/components/LoyaltyCard.vue -->
 <template>
     <div class="flex flex-col items-center"
-        :style="{ backgroundColor: business?.config?.backgroundColor || '#ffffff' }">
+        :style="{ backgroundColor: business?.backgroundColor || '#ffffff' }">
         <!-- Loading State -->
         <div v-if="loading" class="w-full max-w-md mx-auto p-8 bg-white shadow-lg rounded-xl">
             <div class="animate-pulse flex flex-col items-center">
@@ -168,7 +168,7 @@ const error = ref(null);
 
 // Computed properties
 const selectedIcon = computed(() => {
-    return iconMap[business.value?.config?.icon || 'cafe'];
+    return iconMap[business.value?.icon || 'cafe'];
 });
 
 const purchaseCount = computed(() => {
