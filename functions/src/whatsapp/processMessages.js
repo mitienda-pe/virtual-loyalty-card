@@ -133,35 +133,39 @@ async function processImageMessage(
       let businessConfig = null;
       let finalExtraction = initialExtraction;
       
-      // Paso 2: Si encontramos RUC, buscar configuración específica del negocio
+      // Paso 2: Si encontramos RUC, buscar negocio y entidad específica
       if (initialExtraction.ruc) {
-        console.log("🔍 Buscando negocio y configuración específica...");
+        console.log("🔍 Buscando negocio y entidad específica por RUC...");
         
-        // Buscar el negocio por RUC
-        const business = await findBusinessByRUC(initialExtraction.ruc);
+        // ACTUALIZADO: findBusinessByRUC ahora retorna negocio + entidad específica
+        const businessWithEntity = await findBusinessByRUC(initialExtraction.ruc);
         
-        if (business) {
+        if (businessWithEntity) {
+          console.log(`✅ Negocio y entidad encontrados: ${businessWithEntity.slug}/${businessWithEntity.entityId}`);
+          console.log(`📋 Entidad: ${businessWithEntity.entity.businessName} - ${businessWithEntity.entity.address}`);
+          
           // Obtener configuración específica del negocio
-          businessConfig = await businessConfigService.getExtractionConfig(business.slug);
+          businessConfig = await businessConfigService.getExtractionConfig(businessWithEntity.slug);
           
           if (businessConfig) {
-            console.log(`🎯 Usando configuración específica para: ${business.slug}`);
+            console.log(`🎯 Usando configuración específica para: ${businessWithEntity.slug}`);
             
             // Re-extraer con configuración específica
             finalExtraction = extractRUCAndAmount(
               extractedText, 
-              business.slug, 
+              businessWithEntity.slug, 
               businessConfig
             );
-            
-            // Asegurar que mantenemos los datos del negocio
-            finalExtraction.businessSlug = business.slug;
-            finalExtraction.businessName = business.name;
           } else {
-            console.log(`📋 No hay configuración específica para: ${business.slug}, usando patrones base`);
-            finalExtraction.businessSlug = business.slug;
-            finalExtraction.businessName = business.name;
+            console.log(`📋 No hay configuración específica para: ${businessWithEntity.slug}, usando patrones base`);
           }
+          
+          // ACTUALIZADO: Usar datos de la entidad específica
+          finalExtraction.businessSlug = businessWithEntity.slug;
+          finalExtraction.businessName = businessWithEntity.entity.businessName; // Razón social específica
+          finalExtraction.address = businessWithEntity.entity.address; // Dirección específica
+          finalExtraction.entityId = businessWithEntity.entityId; // NUEVO
+          finalExtraction.entity = businessWithEntity.entity; // NUEVO
         } else {
           console.log("❌ Negocio no registrado con RUC:", initialExtraction.ruc);
           
@@ -207,12 +211,14 @@ async function processImageMessage(
           
           finalExtraction.businessSlug = possibleBusiness.slug;
           finalExtraction.businessName = possibleBusiness.name;
+          // NOTA: Sin RUC no podemos determinar la entidad específica
+          finalExtraction.entityId = "main"; // Entidad por defecto
         }
       }
       
       // Verificar que tenemos la información mínima necesaria
       if (!finalExtraction.ruc || !finalExtraction.amount || !finalExtraction.invoiceId) {
-        console.log("❌ Información insuficiente después de extracción configurable");
+        console.log("❌ Información insuficiente después de extracción");
         
         // Almacenar imagen para análisis posterior
         try {
@@ -241,14 +247,28 @@ async function processImageMessage(
         return;
       }
       
+      // NUEVO: Verificar que tenemos la entidad específica
+      if (!finalExtraction.entityId || !finalExtraction.entity) {
+        console.error("❌ No se pudo determinar la entidad específica");
+        await sendWhatsAppMessage(
+          user.phone,
+          "No se pudo determinar la información específica del local. Por favor, intenta nuevamente.",
+          phoneNumberId,
+          apiToken
+        );
+        clearTimeout(processingTimeout);
+        return;
+      }
+      
       // Registro de confianza en la extracción
       console.log(`📊 Extracción completada con confianza: ${finalExtraction.confidence}%`);
+      console.log(`🏢 Entidad específica: ${finalExtraction.entity.businessName} (${finalExtraction.entityId})`);
       
       if (finalExtraction.confidence < 50) {
         console.warn(`⚠️ Baja confianza en extracción (${finalExtraction.confidence}%), puede necesitar revisión manual`);
       }
       
-      // Almacenar imagen con metadatos de configuración
+      // Almacenar imagen con metadatos de configuración y entidad
       let receiptImageUrl = null;
       try {
         console.log("📸 Almacenando imagen del recibo en Firebase Storage...");
@@ -256,7 +276,7 @@ async function processImageMessage(
           imageBuffer,
           finalExtraction.businessSlug,
           user.phone,
-          `config_${businessConfig ? 'custom' : 'base'}_${Date.now()}`
+          `entity_${finalExtraction.entityId}_${businessConfig ? 'custom' : 'base'}_${Date.now()}`
         );
         
         if (storageResult) {
@@ -267,7 +287,7 @@ async function processImageMessage(
         console.error("⚠️ Error almacenando imagen:", storageError.message);
       }
 
-      // Verificar duplicados
+      // ACTUALIZADO: Verificar duplicados considerando entidad específica
       console.log("🔄 Verificando si el comprobante es duplicado...");
       const isDuplicate = await isDuplicateReceipt(
         finalExtraction.businessSlug,
@@ -277,6 +297,7 @@ async function processImageMessage(
         {
           ruc: finalExtraction.ruc,
           invoiceNumber: finalExtraction.invoiceId,
+          entityId: finalExtraction.entityId // NUEVO: Considerar entidad específica
         }
       );
 
@@ -284,7 +305,7 @@ async function processImageMessage(
         console.log("⚠️ Comprobante duplicado detectado");
         await sendWhatsAppMessage(
           user.phone,
-          "Este comprobante ya ha sido registrado anteriormente.",
+          `Este comprobante (N°: ${finalExtraction.invoiceId}) ya ha sido registrado anteriormente para ${finalExtraction.entity.businessName}.`,
           phoneNumberId,
           apiToken
         );
@@ -292,7 +313,7 @@ async function processImageMessage(
         return;
       }
 
-      // Registrar la compra
+      // ACTUALIZADO: Registrar la compra con datos de entidad específica
       console.log("💾 Registrando compra en Firestore...");
       const result = await registerPurchase(
         finalExtraction.businessSlug,
@@ -302,8 +323,10 @@ async function processImageMessage(
         {
           ruc: finalExtraction.ruc,
           invoiceNumber: finalExtraction.invoiceId,
-          businessName: finalExtraction.businessName,
-          address: finalExtraction.address,
+          entityId: finalExtraction.entityId, // NUEVO
+          entity: finalExtraction.entity, // NUEVO
+          businessName: finalExtraction.entity.businessName, // Razón social específica
+          address: finalExtraction.entity.address, // Dirección específica
           customerName: user.name || "Cliente",
           verified: true,
           processedFromQueue: false,
@@ -313,26 +336,19 @@ async function processImageMessage(
         }
       );
 
-      // Crear mensaje de confirmación
+      // ACTUALIZADO: Crear mensaje de confirmación con información específica de la entidad
       const normalizedPhone = normalizePhoneNumber(user.phone);
-      const confirmationMessage = `¡Gracias por tu compra en ${
-        finalExtraction.businessName || finalExtraction.businessSlug
-      }!
+      const confirmationMessage = `¡Gracias por tu compra en ${businessWithEntity?.name || finalExtraction.businessSlug}!
 
 🧯 Comprobante registrado correctamente
 💰 Monto: S/ ${finalExtraction.amount}
-📍 Dirección: ${
-        finalExtraction.address && finalExtraction.address !== "CAJA"
-          ? finalExtraction.address
-          : "No disponible"
-      }
+🏢 Razón Social: ${finalExtraction.entity.businessName}
+📍 Dirección: ${finalExtraction.entity.address || "No disponible"}
 
 🛍️ Compra registrada exitosamente
 🛒 Total de compras: ${result.customer?.purchaseCount || 1}
 
-Ver tu tarjeta de fidelidad: https://asiduo.club/${
-        finalExtraction.businessSlug
-      }/${normalizedPhone}`;
+Ver tu tarjeta de fidelidad: https://asiduo.club/${finalExtraction.businessSlug}/${normalizedPhone}`;
 
       // Enviar mensaje de confirmación
       await sendWhatsAppMessage(

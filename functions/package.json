@@ -6,7 +6,12 @@
     "shell": "firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "migrate:entities": "node scripts/migrateToMultipleEntities.js",
+    "migrate:entities:local": "node scripts/migrateToMultipleEntitiesLocal.js",
+    "test:entities": "node scripts/testMultipleEntities.js",
+    "test:entities:local": "node scripts/testMultipleEntitiesLocal.js",
+    "test:extraction": "node test-extraction.js"
   },
   "engines": {
     "node": "22"

@@ -11,12 +11,12 @@ function setFirestoreDb(firestoreDb) {
 }
 
 /**
- * Verifica si un recibo ya ha sido registrado previamente
+ * Verifica si un recibo ya ha sido registrado previamente considerando entidades específicas
  * @param {string} businessSlug - Slug del negocio
  * @param {string} phoneNumber - Número de teléfono del cliente
  * @param {number} amount - Monto de la compra
  * @param {string} imageUrl - URL de la imagen del recibo
- * @param {object} invoiceData - Datos adicionales de la factura
+ * @param {object} invoiceData - Datos adicionales de la factura (debe incluir entityId)
  * @returns {Promise<boolean>} - True si es un recibo duplicado, false en caso contrario
  */
 async function isDuplicateReceipt(
@@ -31,7 +31,7 @@ async function isDuplicateReceipt(
       console.error(
         "Error: Número de teléfono no proporcionado en isDuplicateReceipt"
       );
-      return false; // No podemos verificar duplicados sin número de teléfono
+      return false;
     }
 
     // Normalizar el número de teléfono para asegurar consistencia
@@ -39,21 +39,51 @@ async function isDuplicateReceipt(
       ? phoneNumber
       : `+${phoneNumber}`;
 
-    // Si tenemos RUC e invoiceNumber, verificar en la colección invoices primero
-    if (invoiceData.ruc && invoiceData.invoiceNumber) {
-      // Con el nuevo patrón de naming, podemos consultar directamente por ID
-      const invoiceDocId = `${invoiceData.ruc}-${invoiceData.invoiceNumber}`;
+    // ACTUALIZADO: Si tenemos RUC, invoiceNumber y entityId, verificar duplicado específico por entidad
+    if (invoiceData.ruc && invoiceData.invoiceNumber && invoiceData.entityId) {
+      console.log(`🔍 Verificando duplicado específico para entidad: ${businessSlug}/${invoiceData.entityId}`);
+      
+      // Con entityId, el ID del invoice incluye la entidad para evitar conflictos
+      const invoiceDocId = `${invoiceData.ruc}-${invoiceData.invoiceNumber}-${invoiceData.entityId}`;
       const invoiceDoc = await db.collection("invoices").doc(invoiceDocId).get();
       
       if (invoiceDoc.exists) {
         console.log(`⚠️ DUPLICADO ENCONTRADO: Factura con ID=${invoiceDocId} ya existe`);
-        // Obtener detalles del duplicado para el log
         const duplicateDoc = invoiceDoc.data();
-        console.log(`Detalles del duplicado: Fecha=${duplicateDoc.date}, Teléfono=${duplicateDoc.phoneNumber}`);
+        console.log(`Detalles del duplicado: Fecha=${duplicateDoc.date}, Teléfono=${duplicateDoc.phoneNumber}, Entidad=${duplicateDoc.entityId}`);
         return true;
       }
       
-      // También verificar en business_invoices como respaldo
+      // También verificar en business_invoices como respaldo con entityId
+      const purchasesRef = db
+        .collection("business_invoices")
+        .doc(businessSlug)
+        .collection("purchases")
+        .where("ruc", "==", invoiceData.ruc)
+        .where("invoiceNumber", "==", invoiceData.invoiceNumber)
+        .where("entityId", "==", invoiceData.entityId) // NUEVO: Filtrar por entidad específica
+        .limit(1);
+
+      const purchasesSnapshot = await purchasesRef.get();
+      if (!purchasesSnapshot.empty) {
+        console.log(`⚠️ Factura duplicada detectada en business_invoices: RUC ${invoiceData.ruc}, Número ${invoiceData.invoiceNumber}, Entidad ${invoiceData.entityId}`);
+        return true;
+      }
+    } 
+    // FALLBACK: Si no tenemos entityId, usar verificación legacy
+    else if (invoiceData.ruc && invoiceData.invoiceNumber) {
+      console.log(`🔍 Verificando duplicado legacy (sin entityId): ${invoiceData.ruc}-${invoiceData.invoiceNumber}`);
+      
+      // Verificar sin entityId para compatibilidad con datos legacy
+      const invoiceDocId = `${invoiceData.ruc}-${invoiceData.invoiceNumber}`;
+      const invoiceDoc = await db.collection("invoices").doc(invoiceDocId).get();
+      
+      if (invoiceDoc.exists) {
+        console.log(`⚠️ DUPLICADO LEGACY ENCONTRADO: Factura con ID=${invoiceDocId} ya existe`);
+        return true;
+      }
+      
+      // Verificar en business_invoices sin filtro de entityId
       const purchasesRef = db
         .collection("business_invoices")
         .doc(businessSlug)
@@ -64,9 +94,7 @@ async function isDuplicateReceipt(
 
       const purchasesSnapshot = await purchasesRef.get();
       if (!purchasesSnapshot.empty) {
-        console.log(
-          `Factura duplicada detectada en business_invoices: RUC ${invoiceData.ruc}, Número ${invoiceData.invoiceNumber}`
-        );
+        console.log(`⚠️ Factura duplicada legacy detectada: RUC ${invoiceData.ruc}, Número ${invoiceData.invoiceNumber}`);
         return true;
       }
     }
@@ -147,6 +175,7 @@ async function isDuplicateReceipt(
     }
 
     // Si llegamos aquí, no es un duplicado
+    console.log(`✅ No se detectó duplicado para ${businessSlug}/${invoiceData.entityId || 'legacy'} - ${invoiceData.ruc}-${invoiceData.invoiceNumber}`);
     return false;
   } catch (error) {
     console.error("Error verificando duplicados:", error);
@@ -231,12 +260,12 @@ async function findOrCreateCustomer(phoneNumber, name = null) {
 }
 
 /**
- * Registra una compra en el sistema
+ * Registra una compra en el sistema con soporte para múltiples entidades
  * @param {string} businessSlug - Slug del negocio
  * @param {string} phoneNumber - Número de teléfono del cliente
  * @param {number} amount - Monto de la compra
  * @param {string} imageUrl - URL de la imagen del recibo
- * @param {object} additionalData - Datos adicionales de la compra
+ * @param {object} additionalData - Datos adicionales de la compra (debe incluir entityId y entity)
  * @returns {Promise<object>} - Resultado del registro
  */
 async function registerPurchase(
@@ -263,6 +292,12 @@ async function registerPurchase(
     throw new Error("Business slug requerido para registrar compra");
   }
 
+  // NUEVO: Validar que tengamos entityId y entity
+  if (!additionalData.entityId || !additionalData.entity) {
+    console.error("Error: entityId y entity son requeridos en registerPurchase");
+    throw new Error("entityId y entity son requeridos para registrar compra");
+  }
+
   // Validar que el número de comprobante (invoiceNumber) sea obligatorio
   if (
     !additionalData.invoiceNumber ||
@@ -270,7 +305,7 @@ async function registerPurchase(
     additionalData.invoiceNumber.trim() === ""
   ) {
     console.error(
-      "Error: Número de comprobante (invoiceNumber) no proporcionado o vacío en registerPurchase"
+      "Error: Número de comprobante (invoiceNumber) no proporcionado o vacío"
     );
     throw new Error(
       "El número de comprobante (invoiceNumber) es obligatorio para registrar la compra."
@@ -285,7 +320,7 @@ async function registerPurchase(
   }
 
   console.log(
-    `Registrando compra para ${phoneNumber} en ${businessSlug} por ${amount}`
+    `Registrando compra para ${phoneNumber} en ${businessSlug}/${additionalData.entityId} por ${amount}`
   );
 
   // Normalizar el número de teléfono para asegurar consistencia
@@ -293,6 +328,10 @@ async function registerPurchase(
     ? phoneNumber
     : `+${phoneNumber}`;
 
+  // NUEVO: Usar datos de la entidad específica
+  const entity = additionalData.entity;
+  const entityId = additionalData.entityId;
+  
   // Obtener nombre del cliente
   let customerName = additionalData.customerName || "Cliente";
 
@@ -363,19 +402,20 @@ async function registerPurchase(
     customerData.businesses[businessSlug].purchases = [];
   }
 
-  // Crear registro de compra con timestamp
-  // Nota: No podemos usar serverTimestamp() dentro de arrays en Firestore
-  // así que usamos una fecha JavaScript normal
+  // ACTUALIZADO: Crear registro de compra con entityId
   const purchaseRecord = {
     amount: parseFloat(amount),
-    date: new Date(), // Usar Date() en lugar de serverTimestamp() para arrays
+    date: new Date(),
     receiptUrl: imageUrl,
     verified: true,
+    entityId: entityId, // NUEVO
     invoiceNumber: additionalData.invoiceNumber || null,
-    ruc: additionalData.ruc || null,
-    address: additionalData.address || null,
-    businessName: additionalData.businessName || null,
+    ruc: entity.ruc, // Usar RUC de la entidad específica
+    address: entity.address, // Usar dirección de la entidad específica
+    businessName: entity.businessName, // Usar razón social de la entidad específica
   };
+
+  console.log(`Registro de compra creado para entidad ${entityId}: ${JSON.stringify(purchaseRecord)}`);
 
   console.log(`Registro de compra creado con fecha: ${purchaseRecord.date}`);
 
@@ -420,14 +460,13 @@ async function registerPurchase(
     `✅ Documento del cliente actualizado exitosamente: ${normalizedPhone}`
   );
 
-  // 3. Registrar la factura en la colección 'invoices'
+  // 2. Registrar la factura en la colección 'invoices' con entityId
   let invoiceId;
-  if (additionalData.ruc && additionalData.invoiceNumber) {
-    // Usar RUC + número de comprobante para evitar duplicados
-    invoiceId = `${additionalData.ruc}-${additionalData.invoiceNumber}`;
+  if (entity.ruc && additionalData.invoiceNumber) {
+    // ACTUALIZADO: Incluir entityId en el ID para evitar conflictos entre entidades
+    invoiceId = `${entity.ruc}-${additionalData.invoiceNumber}-${entityId}`;
   } else {
-    // Fallback si no tenemos RUC o número de comprobante
-    invoiceId = `${businessSlug}_${normalizedPhone}_${Date.now()}`;
+    invoiceId = `${businessSlug}_${entityId}_${normalizedPhone}_${Date.now()}`;
   }
   
   console.log(`Registrando factura con ID: ${invoiceId}`);
@@ -440,15 +479,16 @@ async function registerPurchase(
   } else {
     await invoiceRef.set({
       businessSlug: businessSlug,
+      entityId: entityId, // NUEVO
       phoneNumber: normalizedPhone,
       amount: parseFloat(amount),
       date: admin.firestore.FieldValue.serverTimestamp(),
       receiptUrl: imageUrl,
       verified: true,
       invoiceNumber: additionalData.invoiceNumber || null,
-      ruc: additionalData.ruc || null,
-      address: additionalData.address || null,
-      businessName: additionalData.businessName || null,
+      ruc: entity.ruc, // RUC de la entidad específica
+      address: entity.address, // Dirección de la entidad específica
+      businessName: entity.businessName, // Razón social de la entidad específica
     });
     console.log(`✅ Factura registrada en invoices con ID: ${invoiceId}`);
   }
@@ -590,13 +630,13 @@ async function registerPurchase(
       );
     }
 
-    // 4. Actualizar ruc_business_map si tenemos RUC
-    if (additionalData.ruc) {
-      const rucMapRef = db
-        .collection("ruc_business_map")
-        .doc(additionalData.ruc);
-      await rucMapRef.set({ businessSlug }, { merge: true });
-    }
+    // 5. Actualizar ruc_business_map con entityId
+    const rucMapRef = db.collection("ruc_business_map").doc(entity.ruc);
+    await rucMapRef.set({ 
+      businessSlug, 
+      entityId,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
 
     // 5. Registrar en customer_businesses (nueva colección)
     try {
@@ -618,8 +658,10 @@ async function registerPurchase(
           lastPurchase: {
             amount: parseFloat(amount),
             date: admin.firestore.FieldValue.serverTimestamp(),
+            entityId: entityId, // NUEVO
             invoiceNumber: additionalData.invoiceNumber || null,
-            ruc: additionalData.ruc || null
+            ruc: entity.ruc,
+            businessName: entity.businessName
           }
         });
       } else {
@@ -645,8 +687,10 @@ async function registerPurchase(
           lastPurchase: {
             amount: parseFloat(amount),
             date: admin.firestore.FieldValue.serverTimestamp(),
+            entityId: entityId, // NUEVO
             invoiceNumber: additionalData.invoiceNumber || null,
-            ruc: additionalData.ruc || null
+            ruc: entity.ruc,
+            businessName: entity.businessName
           }
         });
       }
@@ -661,12 +705,11 @@ async function registerPurchase(
 
     // 6. Registrar en customer_purchases (nueva colección)
     try {
-      // Crear un ID personalizado usando RUC + número de factura si están disponibles
+      // ACTUALIZADO: Incluir entityId
       let customerPurchaseId = null;
-      if (additionalData.ruc && additionalData.invoiceNumber) {
-        customerPurchaseId = `${additionalData.ruc}-${additionalData.invoiceNumber}`;
+      if (entity.ruc && additionalData.invoiceNumber) {
+        customerPurchaseId = `${entity.ruc}-${additionalData.invoiceNumber}-${entityId}`;
       } else {
-        // Generar un ID único
         customerPurchaseId = db
           .collection("customer_purchases")
           .doc(normalizedPhone)
@@ -695,15 +738,17 @@ async function registerPurchase(
         id: customerPurchaseId,
         businessSlug: businessSlug,
         businessName: businessName,
+        entityId: entityId, // NUEVO
+        entityBusinessName: entity.businessName, // NUEVO: Razón social específica
+        entityAddress: entity.address, // NUEVO: Dirección específica
         amount: parseFloat(amount),
         date: admin.firestore.FieldValue.serverTimestamp(),
         receiptUrl: imageUrl,
         verified: additionalData.verified || true,
         invoiceNumber: additionalData.invoiceNumber || null,
-        ruc: additionalData.ruc || null,
-        address: additionalData.address || null,
-        usedForRedemption: false, // Inicialmente no usado para redención
-        // Incluir datos adicionales si están disponibles
+        ruc: entity.ruc,
+        address: entity.address, // Dirección de la entidad específica
+        usedForRedemption: false,
         ...(additionalData.vendor ? { vendor: additionalData.vendor } : {}),
         ...(additionalData.items ? { items: additionalData.items } : {}),
         ...(additionalData.amountInWords ? { amountInWords: additionalData.amountInWords } : {})
@@ -734,6 +779,8 @@ async function registerPurchase(
     },
     business: {
       slug: businessSlug,
+      entityId: entityId, // NUEVO
+      entity: entity // NUEVO
     },
     purchase: {
       amount: parseFloat(amount),
@@ -744,7 +791,7 @@ async function registerPurchase(
   };
 
   console.log(
-    `💾 FIN registerPurchase: Compra registrada exitosamente para ${normalizedPhone} en ${businessSlug}`
+    `💾 FIN registerPurchase: Compra registrada exitosamente para ${normalizedPhone} en ${businessSlug}/${entityId}`
   );
   return result;
 }
@@ -874,9 +921,9 @@ async function getCustomerPointsInfo(phoneNumber, businessSlug = null) {
 }
 
 /**
- * Busca un negocio por su RUC
- * @param {string} ruc - RUC del negocio
- * @returns {Promise<object|null>} - Datos del negocio o null si no existe
+ * Busca un negocio y entidad específica por su RUC
+ * @param {string} ruc - RUC del negocio/entidad
+ * @returns {Promise<object|null>} - Datos del negocio y entidad específica o null si no existe
  */
 async function findBusinessByRUC(ruc) {
   try {
@@ -885,35 +932,73 @@ async function findBusinessByRUC(ruc) {
       return null;
     }
 
+    console.log(`🔍 Buscando negocio con RUC: ${ruc}`);
+
     // Primero buscar en el mapa de RUC a business slug
     const rucMapRef = db.collection("ruc_business_map").doc(ruc);
     const rucMapDoc = await rucMapRef.get();
 
     let businessSlug = null;
+    let entityId = null;
 
     if (rucMapDoc.exists) {
-      // Si existe en el mapa, obtener el slug
-      businessSlug = rucMapDoc.data().businessSlug;
-      console.log(`Negocio encontrado en ruc_business_map: ${businessSlug}`);
+      // Si existe en el mapa, obtener el slug y entityId
+      const mapData = rucMapDoc.data();
+      businessSlug = mapData.businessSlug;
+      entityId = mapData.entityId; // NUEVO: ID de la entidad específica
+      console.log(`Negocio encontrado en ruc_business_map: ${businessSlug}, entidad: ${entityId}`);
     } else {
       // Si no existe en el mapa, buscar en la colección de negocios
-      const businessesRef = db
-        .collection("businesses")
-        .where("ruc", "==", ruc)
-        .limit(1);
-      const snapshot = await businessesRef.get();
+      console.log("No encontrado en ruc_business_map, buscando en businesses...");
+      
+      const businessesSnapshot = await db.collection("businesses").get();
+      let foundBusiness = null;
+      let foundEntity = null;
 
-      if (snapshot.empty) {
+      // Buscar en todas las entidades de todos los negocios
+      for (const businessDoc of businessesSnapshot.docs) {
+        const businessData = businessDoc.data();
+        
+        if (businessData.entities && Array.isArray(businessData.entities)) {
+          // Buscar en las entidades del negocio
+          const entity = businessData.entities.find(e => e.ruc === ruc);
+          if (entity) {
+            foundBusiness = businessDoc;
+            foundEntity = entity;
+            businessSlug = businessDoc.id;
+            entityId = entity.id;
+            break;
+          }
+        } else if (businessData.ruc === ruc) {
+          // Compatibilidad con estructura legacy (sin entidades)
+          foundBusiness = businessDoc;
+          businessSlug = businessDoc.id;
+          entityId = "main"; // Entidad principal por defecto
+          
+          // Crear estructura de entidad para compatibilidad
+          foundEntity = {
+            id: "main",
+            businessName: businessData.businessName || businessData.name,
+            ruc: businessData.ruc,
+            address: businessData.address,
+            isMain: true
+          };
+          break;
+        }
+      }
+
+      if (!foundBusiness) {
         console.log(`No se encontró negocio con RUC: ${ruc}`);
         return null;
       }
 
-      // Obtener el slug y guardar en el mapa para futuras búsquedas
-      businessSlug = snapshot.docs[0].id;
-      await rucMapRef.set({ businessSlug });
-      console.log(
-        `Negocio encontrado en businesses y guardado en mapa: ${businessSlug}`
-      );
+      // Guardar en el mapa para futuras búsquedas
+      await rucMapRef.set({ 
+        businessSlug, 
+        entityId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`Negocio encontrado y guardado en mapa: ${businessSlug}, entidad: ${entityId}`);
     }
 
     // Ahora obtener los datos completos del negocio
@@ -927,10 +1012,39 @@ async function findBusinessByRUC(ruc) {
 
     const businessData = businessDoc.data();
 
+    // Encontrar la entidad específica
+    let entity = null;
+    
+    if (businessData.entities && Array.isArray(businessData.entities)) {
+      entity = businessData.entities.find(e => e.id === entityId);
+    } else if (entityId === "main") {
+      // Estructura legacy - crear entidad principal
+      entity = {
+        id: "main",
+        businessName: businessData.businessName || businessData.name,
+        ruc: businessData.ruc,
+        address: businessData.address,
+        isMain: true
+      };
+    }
+
+    if (!entity) {
+      console.log(`Entidad ${entityId} no encontrada en negocio ${businessSlug}`);
+      return null;
+    }
+
+    console.log(`✅ Negocio y entidad encontrados: ${businessSlug}/${entityId}`);
+
     return {
       id: businessSlug,
       slug: businessSlug,
+      entityId: entityId,
+      entity: entity,
       ...businessData,
+      // Mantener campos legacy para compatibilidad
+      businessName: entity.businessName,
+      ruc: entity.ruc,
+      address: entity.address
     };
   } catch (error) {
     console.error("Error buscando negocio por RUC:", error);
@@ -1111,6 +1225,400 @@ async function getCustomerBusinesses(phoneNumber) {
   }
 }
 
+/**
+ * Busca una entidad por RUC en todos los negocios
+ * @param {string} ruc - RUC a buscar
+ * @returns {Promise<object|null>} - { businessSlug, entityId } o null
+ */
+async function findEntityByRUCInAllBusinesses(ruc) {
+  try {
+    // Obtener todos los negocios que tengan businessEntities
+    const businessesSnapshot = await db
+      .collection("businesses")
+      .where("businessEntities", "!=", null)
+      .get();
+
+    for (const businessDoc of businessesSnapshot.docs) {
+      const businessData = businessDoc.data();
+      const businessSlug = businessDoc.id;
+      
+      if (businessData.businessEntities && Array.isArray(businessData.businessEntities)) {
+        const entity = businessData.businessEntities.find(e => e.ruc === ruc);
+        if (entity) {
+          return {
+            businessSlug,
+            entityId: entity.id
+          };
+        }
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Error buscando entidad por RUC:", error);
+    return null;
+  }
+}
+
+/**
+ * Agrega una nueva entidad comercial a un negocio
+ * @param {string} businessSlug - Slug del negocio
+ * @param {object} entityData - Datos de la nueva entidad
+ * @returns {Promise<object>} - Resultado de la operación
+ */
+async function addBusinessEntity(businessSlug, entityData) {
+  try {
+    if (!businessSlug || !entityData) {
+      throw new Error('businessSlug y entityData son requeridos');
+    }
+
+    // Validar campos obligatorios
+    const requiredFields = ['businessName', 'ruc', 'address'];
+    for (const field of requiredFields) {
+      if (!entityData[field] || typeof entityData[field] !== 'string' || entityData[field].trim() === '') {
+        throw new Error(`Campo obligatorio faltante o inválido: ${field}`);
+      }
+    }
+
+    // Validar que el RUC sea único globalmente
+    const isRucUnique = await validateUniqueRUC(entityData.ruc, businessSlug);
+    if (!isRucUnique) {
+      throw new Error(`El RUC ${entityData.ruc} ya está registrado en otro negocio o entidad`);
+    }
+
+    // Obtener el negocio actual
+    const businessRef = db.collection("businesses").doc(businessSlug);
+    const businessDoc = await businessRef.get();
+    
+    if (!businessDoc.exists) {
+      throw new Error(`Negocio no encontrado: ${businessSlug}`);
+    }
+
+    const businessData = businessDoc.data();
+    
+    // Inicializar businessEntities si no existe
+    if (!businessData.businessEntities) {
+      businessData.businessEntities = [];
+    }
+
+    // Generar ID único para la entidad
+    const entityId = entityData.id || `entity_${Date.now()}`;
+    
+    // Verificar que el entityId no exista ya en este negocio
+    const existingEntity = businessData.businessEntities.find(e => e.id === entityId);
+    if (existingEntity) {
+      throw new Error(`Ya existe una entidad con ID: ${entityId}`);
+    }
+
+    // Preparar la nueva entidad
+    const newEntity = {
+      id: entityId,
+      businessName: entityData.businessName.trim(),
+      ruc: entityData.ruc.trim(),
+      address: entityData.address.trim(),
+      locations: entityData.locations || [],
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    // Agregar la nueva entidad
+    businessData.businessEntities.push(newEntity);
+
+    // Actualizar el documento
+    await businessRef.update({
+      businessEntities: businessData.businessEntities,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Actualizar ruc_business_map
+    await db.collection("ruc_business_map").doc(entityData.ruc).set({
+      businessSlug,
+      entityId
+    });
+
+    console.log(`✅ Entidad agregada: ${businessSlug}/${entityId}`);
+    
+    return {
+      success: true,
+      entityId,
+      entity: newEntity
+    };
+  } catch (error) {
+    console.error('Error agregando entidad comercial:', error);
+    throw error;
+  }
+}
+
+/**
+ * Actualiza una entidad comercial existente
+ * @param {string} businessSlug - Slug del negocio
+ * @param {string} entityId - ID de la entidad
+ * @param {object} entityData - Nuevos datos de la entidad
+ * @returns {Promise<object>} - Resultado de la operación
+ */
+async function updateBusinessEntity(businessSlug, entityId, entityData) {
+  try {
+    if (!businessSlug || !entityId || !entityData) {
+      throw new Error('businessSlug, entityId y entityData son requeridos');
+    }
+
+    // Obtener el negocio actual
+    const businessRef = db.collection("businesses").doc(businessSlug);
+    const businessDoc = await businessRef.get();
+    
+    if (!businessDoc.exists) {
+      throw new Error(`Negocio no encontrado: ${businessSlug}`);
+    }
+
+    const businessData = businessDoc.data();
+    
+    if (!businessData.businessEntities || !Array.isArray(businessData.businessEntities)) {
+      throw new Error('El negocio no tiene entidades comerciales');
+    }
+
+    // Encontrar la entidad
+    const entityIndex = businessData.businessEntities.findIndex(e => e.id === entityId);
+    if (entityIndex === -1) {
+      throw new Error(`Entidad no encontrada: ${entityId}`);
+    }
+
+    const currentEntity = businessData.businessEntities[entityIndex];
+    
+    // Si se está cambiando el RUC, validar unicidad
+    if (entityData.ruc && entityData.ruc !== currentEntity.ruc) {
+      const isRucUnique = await validateUniqueRUC(entityData.ruc, businessSlug, entityId);
+      if (!isRucUnique) {
+        throw new Error(`El RUC ${entityData.ruc} ya está registrado en otro negocio o entidad`);
+      }
+    }
+
+    // Actualizar la entidad
+    const updatedEntity = {
+      ...currentEntity,
+      ...entityData,
+      id: entityId, // Mantener el ID original
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+
+    businessData.businessEntities[entityIndex] = updatedEntity;
+
+    // Actualizar el documento
+    await businessRef.update({
+      businessEntities: businessData.businessEntities,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Si cambió el RUC, actualizar ruc_business_map
+    if (entityData.ruc && entityData.ruc !== currentEntity.ruc) {
+      // Eliminar el mapeo anterior
+      await db.collection("ruc_business_map").doc(currentEntity.ruc).delete();
+      
+      // Crear el nuevo mapeo
+      await db.collection("ruc_business_map").doc(entityData.ruc).set({
+        businessSlug,
+        entityId
+      });
+    }
+
+    console.log(`✅ Entidad actualizada: ${businessSlug}/${entityId}`);
+    
+    return {
+      success: true,
+      entity: updatedEntity
+    };
+  } catch (error) {
+    console.error('Error actualizando entidad comercial:', error);
+    throw error;
+  }
+}
+
+/**
+ * Elimina una entidad comercial
+ * @param {string} businessSlug - Slug del negocio
+ * @param {string} entityId - ID de la entidad
+ * @returns {Promise<object>} - Resultado de la operación
+ */
+async function removeBusinessEntity(businessSlug, entityId) {
+  try {
+    if (!businessSlug || !entityId) {
+      throw new Error('businessSlug y entityId son requeridos');
+    }
+
+    // Obtener el negocio actual
+    const businessRef = db.collection("businesses").doc(businessSlug);
+    const businessDoc = await businessRef.get();
+    
+    if (!businessDoc.exists) {
+      throw new Error(`Negocio no encontrado: ${businessSlug}`);
+    }
+
+    const businessData = businessDoc.data();
+    
+    if (!businessData.businessEntities || !Array.isArray(businessData.businessEntities)) {
+      throw new Error('El negocio no tiene entidades comerciales');
+    }
+
+    // Validar que no sea la única entidad
+    if (businessData.businessEntities.length === 1) {
+      throw new Error('No se puede eliminar la única entidad comercial del negocio');
+    }
+
+    // Encontrar la entidad
+    const entityIndex = businessData.businessEntities.findIndex(e => e.id === entityId);
+    if (entityIndex === -1) {
+      throw new Error(`Entidad no encontrada: ${entityId}`);
+    }
+
+    const entityToRemove = businessData.businessEntities[entityIndex];
+    
+    // Eliminar la entidad
+    businessData.businessEntities.splice(entityIndex, 1);
+
+    // Actualizar el documento
+    await businessRef.update({
+      businessEntities: businessData.businessEntities,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Eliminar del ruc_business_map
+    await db.collection("ruc_business_map").doc(entityToRemove.ruc).delete();
+
+    console.log(`✅ Entidad eliminada: ${businessSlug}/${entityId}`);
+    
+    return {
+      success: true,
+      removedEntity: entityToRemove
+    };
+  } catch (error) {
+    console.error('Error eliminando entidad comercial:', error);
+    throw error;
+  }
+}
+
+/**
+ * Obtiene una entidad específica de un negocio
+ * @param {string} businessSlug - Slug del negocio
+ * @param {string} entityId - ID de la entidad
+ * @returns {Promise<object|null>} - Datos de la entidad o null
+ */
+async function getBusinessEntity(businessSlug, entityId) {
+  try {
+    if (!businessSlug || !entityId) {
+      throw new Error('businessSlug y entityId son requeridos');
+    }
+
+    const businessRef = db.collection("businesses").doc(businessSlug);
+    const businessDoc = await businessRef.get();
+    
+    if (!businessDoc.exists) {
+      return null;
+    }
+
+    const businessData = businessDoc.data();
+    
+    if (!businessData.businessEntities || !Array.isArray(businessData.businessEntities)) {
+      return null;
+    }
+
+    const entity = businessData.businessEntities.find(e => e.id === entityId);
+    return entity || null;
+  } catch (error) {
+    console.error('Error obteniendo entidad:', error);
+    return null;
+  }
+}
+
+/**
+ * Obtiene todas las entidades de un negocio
+ * @param {string} businessSlug - Slug del negocio
+ * @returns {Promise<object[]>} - Array de entidades
+ */
+async function getAllBusinessEntities(businessSlug) {
+  try {
+    if (!businessSlug) {
+      throw new Error('businessSlug es requerido');
+    }
+
+    const businessRef = db.collection("businesses").doc(businessSlug);
+    const businessDoc = await businessRef.get();
+    
+    if (!businessDoc.exists) {
+      return [];
+    }
+
+    const businessData = businessDoc.data();
+    return businessData.businessEntities || [];
+  } catch (error) {
+    console.error('Error obteniendo entidades:', error);
+    return [];
+  }
+}
+
+/**
+ * Valida que un RUC sea único globalmente
+ * @param {string} ruc - RUC a validar
+ * @param {string} [excludeBusinessSlug] - Negocio a excluir de la validación
+ * @param {string} [excludeEntityId] - Entidad a excluir de la validación
+ * @returns {Promise<boolean>} - true si es único, false si ya existe
+ */
+async function validateUniqueRUC(ruc, excludeBusinessSlug = null, excludeEntityId = null) {
+  try {
+    if (!ruc) {
+      return false;
+    }
+
+    // Verificar en RUCs principales de negocios
+    const businessesSnapshot = await db
+      .collection("businesses")
+      .where("ruc", "==", ruc)
+      .get();
+
+    // Si encontramos un negocio con este RUC, verificar si es el que estamos excluyendo
+    if (!businessesSnapshot.empty) {
+      const foundBusinessSlug = businessesSnapshot.docs[0].id;
+      if (foundBusinessSlug !== excludeBusinessSlug) {
+        return false; // RUC ya existe en otro negocio
+      }
+    }
+
+    // Verificar en entidades de todos los negocios
+    const allBusinessesSnapshot = await db
+      .collection("businesses")
+      .where("businessEntities", "!=", null)
+      .get();
+
+    for (const businessDoc of allBusinessesSnapshot.docs) {
+      const businessSlug = businessDoc.id;
+      const businessData = businessDoc.data();
+      
+      if (businessData.businessEntities && Array.isArray(businessData.businessEntities)) {
+        for (const entity of businessData.businessEntities) {
+          if (entity.ruc === ruc) {
+            // Si es la misma entidad que estamos excluyendo, continuar
+            if (businessSlug === excludeBusinessSlug && entity.id === excludeEntityId) {
+              continue;
+            }
+            return false; // RUC ya existe en otra entidad
+          }
+        }
+      }
+    }
+
+    return true; // RUC es único
+  } catch (error) {
+    console.error('Error validando unicidad de RUC:', error);
+    return false;
+  }
+}
+
+/**
+ * Buscar entidad por RUC (wrapper de findBusinessByRUC)
+ * @param {string} ruc - RUC a buscar
+ * @returns {Promise<object|null>} - Datos del negocio y entidad
+ */
+async function findEntityByRUC(ruc) {
+  return await findBusinessByRUC(ruc);
+}
+
 module.exports = {
   setFirestoreDb,
   isDuplicateReceipt,
@@ -1122,4 +1630,13 @@ module.exports = {
   getRedemptionHistory,
   getCustomerPurchases,
   getCustomerBusinesses,
+  // Nuevas funciones para entidades comerciales
+  findEntityByRUCInAllBusinesses,
+  addBusinessEntity,
+  updateBusinessEntity,
+  removeBusinessEntity,
+  getBusinessEntity,
+  getAllBusinessEntities,
+  validateUniqueRUC,
+  findEntityByRUC,
 };
