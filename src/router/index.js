@@ -146,6 +146,13 @@ const routes = [
         component: () => import("@/views/admin/business/BusinessSettings.vue"),
         meta: { requiresBusinessAdmin: true },
       },
+      // Ruta para programas de lealtad (Business Admin)
+      {
+        path: "business/loyalty-programs",
+        name: "BusinessLoyaltyPrograms",
+        component: () => import("@/components/loyalty/LoyaltyProgramsManager.vue"),
+        meta: { requiresBusinessAdmin: true },
+      },
     ],
   },
   // Rutas para Business Client

@@ -29,7 +29,7 @@
               <div class="loyalty-card p-3 border rounded bg-light">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                   <h4>{{ business.name }}</h4>
-                  <span class="badge bg-success">{{ calculateLevel(clientBusiness.points || 0) }}</span>
+                  <span class="badge bg-success">{{ calculateLevel(totalPoints) }}</span>
                 </div>
                 
                 <div class="mb-3">
@@ -38,20 +38,43 @@
                   <p class="mb-0"><strong>Desde:</strong> {{ formatDate(clientBusiness.createdAt) }}</p>
                 </div>
                 
+                <!-- Información consolidada -->
                 <div class="mb-3">
                   <div class="d-flex justify-content-between mb-1">
                     <span><strong>Puntos acumulados:</strong></span>
-                    <span>{{ clientBusiness.points || 0 }} pts</span>
+                    <span>{{ totalPoints }} pts</span>
                   </div>
                   <div class="progress">
                     <div 
                       class="progress-bar bg-success" 
                       role="progressbar" 
-                      :style="`width: ${calculateProgress(clientBusiness.points || 0)}%`" 
-                      :aria-valuenow="calculateProgress(clientBusiness.points || 0)" 
+                      :style="`width: ${calculateProgress(totalPoints)}%`" 
+                      :aria-valuenow="calculateProgress(totalPoints)" 
                       aria-valuemin="0" 
                       aria-valuemax="100">
-                      {{ calculateProgress(clientBusiness.points || 0) }}%
+                      {{ calculateProgress(totalPoints) }}%
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Estadísticas consolidadas -->
+                <div class="row text-center mt-3">
+                  <div class="col-4">
+                    <div class="stat-item">
+                      <div class="stat-value">{{ totalPurchases }}</div>
+                      <div class="stat-label">Compras</div>
+                    </div>
+                  </div>
+                  <div class="col-4">
+                    <div class="stat-item">
+                      <div class="stat-value">{{ formatCurrency(totalSpent) }}</div>
+                      <div class="stat-label">Total Gastado</div>
+                    </div>
+                  </div>
+                  <div class="col-4">
+                    <div class="stat-item">
+                      <div class="stat-value">{{ uniqueLocations }}</div>
+                      <div class="stat-label">{{ uniqueLocations === 1 ? 'Ubicación' : 'Ubicaciones' }}</div>
                     </div>
                   </div>
                 </div>
@@ -76,44 +99,94 @@
             </div>
             <div class="card-body">
               <p v-if="business.description">{{ business.description }}</p>
-              <p v-if="business.address"><strong>Dirección:</strong> {{ business.address }}</p>
-              <p v-if="business.phone"><strong>Teléfono:</strong> {{ business.phone }}</p>
-              <p v-if="business.email"><strong>Email:</strong> {{ business.email }}</p>
-              <p v-if="business.website"><strong>Sitio web:</strong> <a :href="business.website" target="_blank">{{ business.website }}</a></p>
               
-              <div v-if="business.pointsPerCurrency" class="alert alert-info mt-3">
-                <p class="mb-0"><strong>Política de puntos:</strong> {{ business.pointsPerCurrency }} puntos por cada $1 gastado</p>
+              <!-- Mostrar información de entidades si hay múltiples -->
+              <div v-if="hasMultipleEntities" class="mt-3">
+                <h6>Ubicaciones Disponibles:</h6>
+                <div class="entities-list">
+                  <div 
+                    v-for="entity in business.businessEntities"
+                    :key="entity.id"
+                    class="entity-card mb-2"
+                  >
+                    <div class="entity-header">
+                      <strong>{{ entity.businessName }}</strong>
+                      <small class="text-muted">RUC: {{ entity.ruc }}</small>
+                    </div>
+                    <div class="entity-address">
+                      <i class="bi bi-geo-alt"></i>
+                      {{ entity.address }}
+                    </div>
+                    <div v-if="entity.locations?.length" class="entity-locations">
+                      <small class="text-muted">
+                        Ubicaciones: {{ entity.locations.join(', ') }}
+                      </small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Información básica para negocio con una sola entidad -->
+              <div v-else-if="business.businessEntities?.length === 1">
+                <p v-if="business.businessEntities[0].address">
+                  <strong>Dirección:</strong> {{ business.businessEntities[0].address }}
+                </p>
+                <p><strong>RUC:</strong> {{ business.businessEntities[0].ruc }}</p>
+              </div>
+
+              <!-- Información adicional del negocio -->
+              <div class="mt-3">
+                <p v-if="business.phone"><strong>Teléfono:</strong> {{ business.phone }}</p>
+                <p v-if="business.email"><strong>Email:</strong> {{ business.email }}</p>
+                <p v-if="business.website">
+                  <strong>Sitio web:</strong> 
+                  <a :href="business.website" target="_blank">{{ business.website }}</a>
+                </p>
+                
+                <div v-if="business.config?.purchasesRequired" class="alert alert-info mt-3">
+                  <p class="mb-0">
+                    <strong>Programa de Fidelidad:</strong> 
+                    Obtén una recompensa cada {{ business.config.purchasesRequired }} compras
+                  </p>
+                  <p v-if="business.config.reward" class="mb-0">
+                    <strong>Recompensa:</strong> {{ business.config.reward }}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
           
           <div class="card">
             <div class="card-header bg-success text-white">
-              <h5 class="card-title mb-0">Premios Disponibles</h5>
+              <h5 class="card-title mb-0">Progreso hacia Recompensa</h5>
             </div>
             <div class="card-body">
-              <div v-if="availableRewards.length === 0" class="text-center py-3">
-                <p class="text-muted">No hay premios disponibles actualmente.</p>
-              </div>
-              <div v-else>
-                <div class="list-group">
-                  <div v-for="reward in availableRewards" :key="reward.id" class="list-group-item list-group-item-action">
-                    <div class="d-flex w-100 justify-content-between">
-                      <h5 class="mb-1">{{ reward.name }}</h5>
-                      <span class="badge bg-primary">{{ reward.pointsCost }} pts</span>
-                    </div>
-                    <p class="mb-1">{{ reward.description }}</p>
-                    <div class="d-flex justify-content-between align-items-center">
-                      <small class="text-muted">Válido hasta: {{ formatDate(reward.validUntil) }}</small>
-                      <button 
-                        class="btn btn-sm btn-success" 
-                        :disabled="clientBusiness.points < reward.pointsCost"
-                        @click="redeemReward(reward)">
-                        Canjear
-                      </button>
-                    </div>
+              <div v-if="business.config?.purchasesRequired">
+                <div class="d-flex justify-content-between mb-2">
+                  <span>Progreso actual:</span>
+                  <span>{{ totalPurchases }} / {{ business.config.purchasesRequired }} compras</span>
+                </div>
+                <div class="progress mb-3">
+                  <div 
+                    class="progress-bar bg-success" 
+                    role="progressbar" 
+                    :style="`width: ${rewardProgress}%`"
+                    :aria-valuenow="rewardProgress" 
+                    aria-valuemin="0" 
+                    aria-valuemax="100">
+                    {{ Math.round(rewardProgress) }}%
                   </div>
                 </div>
+                
+                <div v-if="purchasesUntilReward === 0" class="alert alert-success">
+                  <strong>¡Felicidades!</strong> Has alcanzado tu recompensa: {{ business.config.reward }}
+                </div>
+                <div v-else class="alert alert-info">
+                  Te faltan <strong>{{ purchasesUntilReward }}</strong> compras para obtener tu recompensa
+                </div>
+              </div>
+              <div v-else class="text-center py-3">
+                <p class="text-muted">Información de recompensas no disponible.</p>
               </div>
             </div>
           </div>
@@ -121,43 +194,82 @@
       </div>
       
       <div class="card">
-        <div class="card-header bg-primary text-white">
-          <h5 class="card-title mb-0">Mis Últimas Transacciones</h5>
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0">Mi Historial de Compras</h5>
+          <div v-if="hasMultipleEntities" class="entity-filter">
+            <select v-model="selectedEntityFilter" class="form-select form-select-sm">
+              <option value="">Todas las ubicaciones</option>
+              <option 
+                v-for="entity in business.businessEntities" 
+                :key="entity.id"
+                :value="entity.id"
+              >
+                {{ entity.businessName }}
+              </option>
+            </select>
+          </div>
         </div>
         <div class="card-body">
-          <div v-if="transactions.length === 0" class="text-center py-4">
-            <p class="text-muted">No tienes transacciones con este negocio.</p>
+          <div v-if="filteredTransactions.length === 0" class="text-center py-4">
+            <p class="text-muted">No tienes compras registradas{{ selectedEntityFilter ? ' en esta ubicación' : '' }}.</p>
           </div>
           <div v-else class="table-responsive">
             <table class="table table-hover">
               <thead>
                 <tr>
                   <th>Fecha</th>
-                  <th>Tipo</th>
-                  <th>Descripción</th>
+                  <th v-if="hasMultipleEntities">Ubicación</th>
                   <th>Monto</th>
-                  <th>Puntos</th>
+                  <th>Comprobante</th>
+                  <th>Estado</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="transaction in transactions" :key="transaction.id">
-                  <td>{{ formatDate(transaction.timestamp) }}</td>
-                  <td>
-                    <span :class="`badge ${transaction.type === 'purchase' ? 'bg-primary' : transaction.type === 'reward' ? 'bg-success' : 'bg-info'}`">
-                      {{ transaction.type === 'purchase' ? 'Compra' : transaction.type === 'reward' ? 'Premio' : 'Ajuste' }}
-                    </span>
+                <tr v-for="transaction in filteredTransactions" :key="transaction.id">
+                  <td>{{ formatDate(transaction.date) }}</td>
+                  <td v-if="hasMultipleEntities">
+                    <PurchaseEntityInfo :entity-id="transaction.entityId" :entities="business.businessEntities" />
                   </td>
-                  <td>{{ transaction.description }}</td>
-                  <td>{{ transaction.amount ? `$${transaction.amount}` : '-' }}</td>
+                  <td>{{ formatCurrency(transaction.amount) }}</td>
                   <td>
-                    <span :class="transaction.points >= 0 ? 'text-success' : 'text-danger'">
-                      {{ transaction.points >= 0 ? '+' : '' }}{{ transaction.points }}
+                    <span v-if="transaction.invoiceNumber" class="badge bg-secondary">
+                      {{ transaction.invoiceNumber }}
+                    </span>
+                    <span v-else class="text-muted">-</span>
+                  </td>
+                  <td>
+                    <span :class="`badge ${transaction.verified ? 'bg-success' : 'bg-warning'}`">
+                      {{ transaction.verified ? 'Verificado' : 'Pendiente' }}
                     </span>
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
+          
+          <!-- Paginación si hay muchas transacciones -->
+          <nav v-if="totalTransactions > transactionsPerPage" aria-label="Paginación de transacciones">
+            <ul class="pagination justify-content-center">
+              <li class="page-item" :class="{ disabled: currentPage === 1 }">
+                <button class="page-link" @click="changePage(currentPage - 1)" :disabled="currentPage === 1">
+                  Anterior
+                </button>
+              </li>
+              <li 
+                v-for="page in totalPages" 
+                :key="page"
+                class="page-item" 
+                :class="{ active: page === currentPage }"
+              >
+                <button class="page-link" @click="changePage(page)">{{ page }}</button>
+              </li>
+              <li class="page-item" :class="{ disabled: currentPage === totalPages }">
+                <button class="page-link" @click="changePage(currentPage + 1)" :disabled="currentPage === totalPages">
+                  Siguiente
+                </button>
+              </li>
+            </ul>
+          </nav>
         </div>
       </div>
     </div>
@@ -165,14 +277,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
 import { 
   doc, getDoc, collection, query, where, orderBy, limit, getDocs,
-  addDoc, updateDoc, serverTimestamp 
+  addDoc, updateDoc, serverTimestamp, startAfter 
 } from 'firebase/firestore';
 import { db } from '@/firebase';
+import PurchaseEntityInfo from '@/components/customer/PurchaseEntityInfo.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -182,8 +295,13 @@ const business = ref(null);
 const clientBusiness = ref({});
 const clientId = ref('');
 const transactions = ref([]);
-const availableRewards = ref([]);
+const allTransactions = ref([]);
 const loading = ref(true);
+
+// Filtros y paginación
+const selectedEntityFilter = ref('');
+const currentPage = ref(1);
+const transactionsPerPage = ref(10);
 
 onMounted(async () => {
   if (authStore.isAuthenticated && authStore.isBusinessClient) {
@@ -191,11 +309,75 @@ onMounted(async () => {
     await loadBusinessData();
     await loadClientBusinessData();
     await loadTransactions();
-    await loadAvailableRewards();
     loading.value = false;
   }
 });
 
+// Computed properties
+const hasMultipleEntities = computed(() => {
+  return business.value?.businessEntities?.length > 1;
+});
+
+const totalPoints = computed(() => {
+  return clientBusiness.value.points || 0;
+});
+
+const totalPurchases = computed(() => {
+  return allTransactions.value.filter(t => t.type === 'purchase').length;
+});
+
+const totalSpent = computed(() => {
+  return allTransactions.value
+    .filter(t => t.type === 'purchase')
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+});
+
+const uniqueLocations = computed(() => {
+  if (!hasMultipleEntities.value) return 1;
+  const entityIds = new Set(allTransactions.value.map(t => t.entityId).filter(Boolean));
+  return entityIds.size || 1;
+});
+
+const rewardProgress = computed(() => {
+  if (!business.value?.config?.purchasesRequired) return 0;
+  return Math.min((totalPurchases.value / business.value.config.purchasesRequired) * 100, 100);
+});
+
+const purchasesUntilReward = computed(() => {
+  if (!business.value?.config?.purchasesRequired) return 0;
+  return Math.max(business.value.config.purchasesRequired - totalPurchases.value, 0);
+});
+
+const filteredTransactions = computed(() => {
+  let filtered = allTransactions.value;
+  
+  if (selectedEntityFilter.value) {
+    filtered = filtered.filter(t => t.entityId === selectedEntityFilter.value);
+  }
+  
+  // Paginación
+  const start = (currentPage.value - 1) * transactionsPerPage.value;
+  const end = start + transactionsPerPage.value;
+  
+  return filtered.slice(start, end);
+});
+
+const totalTransactions = computed(() => {
+  return selectedEntityFilter.value 
+    ? allTransactions.value.filter(t => t.entityId === selectedEntityFilter.value).length
+    : allTransactions.value.length;
+});
+
+const totalPages = computed(() => {
+  return Math.ceil(totalTransactions.value / transactionsPerPage.value);
+});
+
+// Watchers
+watch(selectedEntityFilter, () => {
+  currentPage.value = 1; // Reset página al cambiar filtro
+});
+
+// Métodos
 async function loadBusinessData() {
   try {
     const businessDoc = await getDoc(doc(db, "businesses", businessId.value));
@@ -238,98 +420,50 @@ async function loadClientBusinessData() {
 
 async function loadTransactions() {
   try {
+    // Cargar desde customer_purchases (nueva estructura)
+    const purchasesQuery = query(
+      collection(db, "customer_purchases", authStore.user.uid, "purchases"),
+      where("businessSlug", "==", businessId.value),
+      orderBy("date", "desc")
+    );
+    
+    const snapshot = await getDocs(purchasesQuery);
+    allTransactions.value = snapshot.docs.map(doc => ({
+      id: doc.id,
+      type: 'purchase',
+      ...doc.data()
+    }));
+    
+  } catch (error) {
+    console.error("Error al cargar transacciones:", error);
+    // Fallback a estructura antigua
+    await loadTransactionsLegacy();
+  }
+}
+
+async function loadTransactionsLegacy() {
+  try {
     const transactionsQuery = query(
       collection(db, "transactions"),
       where("clientId", "==", authStore.user.uid),
       where("businessId", "==", businessId.value),
-      orderBy("timestamp", "desc"),
-      limit(10)
+      orderBy("timestamp", "desc")
     );
     
     const snapshot = await getDocs(transactionsQuery);
-    transactions.value = snapshot.docs.map(doc => ({
+    allTransactions.value = snapshot.docs.map(doc => ({
       id: doc.id,
+      date: doc.data().timestamp,
       ...doc.data()
     }));
   } catch (error) {
-    console.error("Error al cargar transacciones:", error);
+    console.error("Error al cargar transacciones (legacy):", error);
   }
 }
 
-async function loadAvailableRewards() {
-  try {
-    const rewardsQuery = query(
-      collection(db, "rewards"),
-      where("businessId", "==", businessId.value),
-      where("active", "==", true)
-    );
-    
-    const snapshot = await getDocs(rewardsQuery);
-    availableRewards.value = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })).filter(reward => {
-      // Filtrar solo los premios válidos (fecha de validez no expirada)
-      if (reward.validUntil) {
-        const validUntil = reward.validUntil.toDate ? reward.validUntil.toDate() : new Date(reward.validUntil);
-        return validUntil > new Date();
-      }
-      return true;
-    });
-  } catch (error) {
-    console.error("Error al cargar premios disponibles:", error);
-  }
-}
-
-async function redeemReward(reward) {
-  if (clientBusiness.value.points < reward.pointsCost) {
-    alert("No tienes suficientes puntos para canjear este premio.");
-    return;
-  }
-  
-  try {
-    // 1. Crear registro de premio canjeado
-    const clientRewardRef = await addDoc(collection(db, "client_rewards"), {
-      clientId: authStore.user.uid,
-      businessId: businessId.value,
-      rewardId: reward.id,
-      rewardName: reward.name,
-      businessName: business.value.name,
-      pointsCost: reward.pointsCost,
-      redeemed: false,
-      createdAt: serverTimestamp()
-    });
-    
-    // 2. Crear transacción de canje de premio
-    await addDoc(collection(db, "transactions"), {
-      clientId: authStore.user.uid,
-      businessId: businessId.value,
-      businessName: business.value.name,
-      type: "reward",
-      description: `Canje de premio: ${reward.name}`,
-      points: -reward.pointsCost,
-      timestamp: serverTimestamp(),
-      rewardId: reward.id,
-      clientRewardId: clientRewardRef.id
-    });
-    
-    // 3. Actualizar puntos del cliente
-    const newPoints = (clientBusiness.value.points || 0) - reward.pointsCost;
-    await updateDoc(doc(db, "client_businesses", clientBusiness.value.id), {
-      points: newPoints,
-      updatedAt: serverTimestamp()
-    });
-    
-    // 4. Actualizar datos locales
-    clientBusiness.value.points = newPoints;
-    
-    // 5. Recargar transacciones
-    await loadTransactions();
-    
-    alert(`¡Has canjeado el premio "${reward.name}" exitosamente!`);
-  } catch (error) {
-    console.error("Error al canjear premio:", error);
-    alert("Ocurrió un error al canjear el premio. Por favor, intenta nuevamente.");
+function changePage(page) {
+  if (page >= 1 && page <= totalPages.value) {
+    currentPage.value = page;
   }
 }
 
@@ -359,6 +493,14 @@ function formatDate(timestamp) {
     minute: '2-digit'
   });
 }
+
+function formatCurrency(amount) {
+  return new Intl.NumberFormat('es-PE', {
+    style: 'currency',
+    currency: 'PEN',
+    minimumFractionDigits: 2
+  }).format(amount || 0);
+}
 </script>
 
 <style scoped>
@@ -375,5 +517,69 @@ function formatDate(timestamp) {
 .qr-code {
   max-width: 200px;
   margin: 0 auto;
+}
+
+.stat-item {
+  padding: 0.5rem;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #333;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: #666;
+  text-transform: uppercase;
+}
+
+.entity-card {
+  border: 1px solid #e9ecef;
+  border-radius: 0.375rem;
+  padding: 0.75rem;
+  background-color: #f8f9fa;
+}
+
+.entity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.entity-address {
+  color: #6c757d;
+  font-size: 0.9rem;
+}
+
+.entity-address i {
+  margin-right: 0.25rem;
+}
+
+.entity-locations {
+  margin-top: 0.25rem;
+}
+
+.entities-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.entity-filter .form-select {
+  min-width: 200px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .entity-filter {
+    margin-top: 0.5rem;
+  }
+  
+  .card-header {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
 }
 </style>

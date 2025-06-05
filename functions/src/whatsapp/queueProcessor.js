@@ -307,11 +307,11 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
     throw new Error(`Información insuficiente en el comprobante: falta ${missingFields.join(', ')}`);
   }
 
-  // Buscar el negocio por RUC en la base de datos
-  console.log("🔍 Buscando negocio con RUC:", extractedData.ruc);
-  const business = await findBusinessByRUC(extractedData.ruc);
+  // ACTUALIZADO: Buscar el negocio y entidad específica por RUC
+  console.log("🔍 Buscando negocio y entidad específica con RUC:", extractedData.ruc);
+  const businessWithEntity = await findBusinessByRUC(extractedData.ruc);
 
-  if (!business) {
+  if (!businessWithEntity) {
     // Almacenar la imagen para análisis posterior, incluso si el negocio no está registrado
     try {
       await storeReceiptImage(
@@ -323,7 +323,6 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
       console.log("📸 Imagen almacenada para análisis posterior (negocio no registrado)");
     } catch (storageError) {
       console.error("⚠️ Error almacenando imagen de negocio no registrado:", storageError.message);
-      // No interrumpimos el flujo por un error de almacenamiento
     }
 
     // Notificar al usuario
@@ -336,9 +335,15 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
     throw new Error(`Negocio no registrado con RUC: ${extractedData.ruc}`);
   }
 
-  // Usar el slug del negocio desde la base de datos
-  extractedData.businessSlug = business.slug || extractedData.businessSlug;
-  extractedData.businessName = business.name || extractedData.businessName;
+  // ACTUALIZADO: Usar datos de la entidad específica
+  extractedData.businessSlug = businessWithEntity.slug;
+  extractedData.businessName = businessWithEntity.entity.businessName; // Razón social específica
+  extractedData.address = businessWithEntity.entity.address; // Dirección específica
+  extractedData.entityId = businessWithEntity.entityId; // NUEVO
+  extractedData.entity = businessWithEntity.entity; // NUEVO
+
+  console.log(`✅ Negocio y entidad encontrados: ${businessWithEntity.slug}/${businessWithEntity.entityId}`);
+  console.log(`📋 Entidad: ${businessWithEntity.entity.businessName} - ${businessWithEntity.entity.address}`);
 
   // Almacenar la imagen en Firebase Storage
   let receiptImageUrl = null;
@@ -348,7 +353,7 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
       imageBuffer,
       extractedData.businessSlug,
       user.phone,
-      `queue_ruc_${extractedData.ruc}_${Date.now()}`
+      `queue_entity_${extractedData.entityId}_${Date.now()}`
     );
 
     if (storageResult) {
@@ -372,6 +377,7 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
     {
       ruc: extractedData.ruc,
       invoiceNumber: extractedData.invoiceId,
+      entityId: extractedData.entityId // NUEVO: Considerar entidad específica
     }
   );
 
@@ -382,64 +388,59 @@ async function processQueuedImage(queueId, imageBuffer, user, phoneNumberId, api
         imageBuffer,
         "duplicate_invoice",
         user.phone,
-        `queue_duplicate_invoice_${extractedData.invoiceId}_${Date.now()}`
+        `queue_duplicate_entity_${extractedData.entityId}_${extractedData.invoiceId}_${Date.now()}`
       );
       console.log("📸 Imagen almacenada por comprobante duplicado");
     } catch (storageError) {
       console.error("⚠️ Error almacenando imagen duplicada:", storageError.message);
     }
-    // Notificar al usuario
+    // Notificar al usuario con información específica de la entidad
     await sendWhatsAppMessage(
       user.phone,
-      `Este comprobante (N°: ${extractedData.invoiceId}) ya fue registrado anteriormente para este negocio. No se permiten duplicados.`,
+      `Este comprobante (N°: ${extractedData.invoiceId}) ya fue registrado anteriormente para ${extractedData.entity.businessName}. No se permiten duplicados.`,
       phoneNumberId,
       apiToken
     );
-    throw new Error(`Comprobante duplicado: ${extractedData.invoiceId}`);
+    throw new Error(`Comprobante duplicado: ${extractedData.invoiceId} para entidad ${extractedData.entityId}`);
   }
 
-  // Registrar la compra
+  // ACTUALIZADO: Registrar la compra con datos de entidad específica
   console.log("💾 Registrando compra en Firestore...");
   const result = await registerPurchase(
     extractedData.businessSlug,
     user.phone,
     extractedData.amount,
-    receiptImageUrl, // Ahora pasamos la URL de la imagen almacenada
+    receiptImageUrl,
     {
       ruc: extractedData.ruc,
       invoiceNumber: extractedData.invoiceId,
-      businessName: extractedData.businessName,
-      address: extractedData.address,
+      entityId: extractedData.entityId, // NUEVO
+      entity: extractedData.entity, // NUEVO
+      businessName: extractedData.entity.businessName, // Razón social específica
+      address: extractedData.entity.address, // Dirección específica
       customerName: user.name || "Cliente",
       verified: true,
       processedFromQueue: true,
       queueId,
-      hasStoredImage: !!receiptImageUrl // Indicador de si tenemos imagen almacenada
+      hasStoredImage: !!receiptImageUrl
     }
   );
   
   // Normalizar el número de teléfono
   const normalizedPhone = normalizePhoneNumber(user.phone);
   
-  // Crear mensaje de confirmación
-  const confirmationMessage = `¡Gracias por tu compra en ${
-    extractedData.businessName || business.name || extractedData.businessSlug
-  }!
+  // ACTUALIZADO: Crear mensaje de confirmación con información específica de la entidad
+  const confirmationMessage = `¡Gracias por tu compra en ${businessWithEntity.name || extractedData.businessSlug}!
 
 🧯 Comprobante registrado correctamente
 💰 Monto: S/ ${extractedData.amount}
-📍 Dirección: ${
-    extractedData.address && extractedData.address !== "CAJA"
-      ? extractedData.address
-      : "No disponible"
-  }
+🏢 Razón Social: ${extractedData.entity.businessName}
+📍 Dirección: ${extractedData.entity.address || "No disponible"}
 
 🛍️ Compra registrada exitosamente
 🛒 Total de compras: ${result.customer?.purchaseCount || 1}
 
-Ver tu tarjeta de fidelidad: https://asiduo.club/${
-    extractedData.businessSlug
-  }/${normalizedPhone}`;
+Ver tu tarjeta de fidelidad: https://asiduo.club/${extractedData.businessSlug}/${normalizedPhone}`;
   
   // Enviar mensaje de confirmación
   await sendWhatsAppMessage(
@@ -451,6 +452,8 @@ Ver tu tarjeta de fidelidad: https://asiduo.club/${
   
   return {
     businessSlug: extractedData.businessSlug,
+    entityId: extractedData.entityId, // NUEVO
+    entity: extractedData.entity, // NUEVO
     amount: extractedData.amount,
     purchaseCount: result.customer?.purchaseCount || 1
   };

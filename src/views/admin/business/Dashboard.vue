@@ -1,79 +1,153 @@
 <template>
   <div class="business-admin-dashboard">
-    
-    <div class="row">
-      <div class="col-md-4 mb-4">
+    <!-- Header con selector de entidad -->
+    <div class="dashboard-header mb-4">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <h1 class="h3 mb-0">Dashboard - {{ business?.name || 'Cargando...' }}</h1>
+          <p class="text-muted mb-0">Panel de control del negocio</p>
+        </div>
+        
+        <!-- Selector de entidad -->
+        <div v-if="business?.businessEntities?.length > 1" class="entity-selector-wrapper">
+          <EntitySelector 
+            :entities="business.businessEntities"
+            v-model="selectedEntityId"
+            @change="handleEntityChange"
+          />
+        </div>
+      </div>
+      
+      <!-- Información de la entidad seleccionada -->
+      <div v-if="selectedEntity && selectedEntityId !== 'all'" class="selected-entity-info mt-3">
+        <div class="alert alert-info mb-0">
+          <strong>Vista filtrada:</strong> Mostrando datos únicamente de 
+          <em>{{ selectedEntity.businessName }}</em> ({{ selectedEntity.ruc }})
+        </div>
+      </div>
+    </div>
+
+    <!-- Métricas principales -->
+    <div class="row mb-4">
+      <div class="col-md-3 mb-3">
         <div class="card bg-primary text-white h-100">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-start">
               <div>
-                <h5 class="card-title">Total de Clientes</h5>
-                <h2 class="display-4">{{ stats.totalClients }}</h2>
+                <h6 class="card-title">Total de Clientes</h6>
+                <h3 class="mb-0">{{ formatNumber(metrics.uniqueCustomers) }}</h3>
               </div>
-              <i class="bi bi-people fs-1"></i>
+              <i class="bi bi-people fs-2"></i>
             </div>
-            <p class="card-text mt-2">
-              <span class="badge bg-light text-primary">
-                <i class="bi bi-arrow-up"></i> {{ stats.newClientsThisMonth }} nuevos este mes
-              </span>
+            <p class="card-text mt-2 mb-0">
+              <small>
+                <i class="bi bi-arrow-up"></i> 
+                {{ entitySubtitle }}
+              </small>
             </p>
-          </div>
-          <div class="card-footer bg-transparent border-0">
-            <router-link to="/admin/business/clients" class="text-white">Ver todos los clientes <i class="bi bi-arrow-right"></i></router-link>
           </div>
         </div>
       </div>
       
-      <div class="col-md-4 mb-4">
+      <div class="col-md-3 mb-3">
         <div class="card bg-success text-white h-100">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-start">
               <div>
-                <h5 class="card-title">Transacciones</h5>
-                <h2 class="display-4">{{ stats.totalTransactions }}</h2>
+                <h6 class="card-title">Compras Totales</h6>
+                <h3 class="mb-0">{{ formatNumber(metrics.totalPurchases) }}</h3>
               </div>
-              <i class="bi bi-cash-stack fs-1"></i>
+              <i class="bi bi-bag-check fs-2"></i>
             </div>
-            <p class="card-text mt-2">
-              <span class="badge bg-light text-success">
-                <i class="bi bi-arrow-up"></i> {{ stats.transactionsThisMonth }} este mes
-              </span>
+            <p class="card-text mt-2 mb-0">
+              <small>
+                <span :class="growthClass">
+                  <i :class="growthIcon"></i> {{ formatGrowth(metrics.monthlyGrowth) }}%
+                </span>
+                vs mes anterior
+              </small>
             </p>
-          </div>
-          <div class="card-footer bg-transparent border-0">
-            <router-link to="/admin/business/transactions" class="text-white">Ver todas las transacciones <i class="bi bi-arrow-right"></i></router-link>
           </div>
         </div>
       </div>
       
-      <div class="col-md-4 mb-4">
+      <div class="col-md-3 mb-3">
         <div class="card bg-info text-white h-100">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-start">
               <div>
-                <h5 class="card-title">Premios Canjeados</h5>
-                <h2 class="display-4">{{ stats.totalRewards }}</h2>
+                <h6 class="card-title">Ingresos</h6>
+                <h3 class="mb-0">{{ formatCurrency(metrics.totalRevenue) }}</h3>
               </div>
-              <i class="bi bi-gift fs-1"></i>
+              <i class="bi bi-cash-stack fs-2"></i>
             </div>
-            <p class="card-text mt-2">
-              <span class="badge bg-light text-info">
-                <i class="bi bi-arrow-up"></i> {{ stats.rewardsThisMonth }} este mes
-              </span>
+            <p class="card-text mt-2 mb-0">
+              <small>
+                {{ formatCurrency(metrics.averageTicket) }} ticket promedio
+              </small>
             </p>
           </div>
-          <div class="card-footer bg-transparent border-0">
-            <router-link to="/admin/business/rewards" class="text-white">Gestionar premios <i class="bi bi-arrow-right"></i></router-link>
+        </div>
+      </div>
+
+      <div class="col-md-3 mb-3">
+        <div class="card bg-warning text-white h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <h6 class="card-title">Entidades Activas</h6>
+                <h3 class="mb-0">{{ business?.businessEntities?.length || 1 }}</h3>
+              </div>
+              <i class="bi bi-building fs-2"></i>
+            </div>
+            <p class="card-text mt-2 mb-0">
+              <small>
+                {{ business?.businessEntities?.length > 1 ? 'Múltiples entidades' : 'Entidad única' }}
+              </small>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Desglose por entidades (solo si hay múltiples y vista consolidada) -->
+    <div v-if="showEntityBreakdown" class="row mb-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">
+              <i class="bi bi-building me-2"></i>
+              Desglose por Entidades Comerciales
+            </h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div 
+                v-for="entity in business.businessEntities" 
+                :key="entity.id"
+                class="col-lg-6 col-xl-4 mb-3"
+              >
+                <EntityStatsCard 
+                  :entity="entity"
+                  :stats="getEntityStats(entity.id)"
+                  @view-details="filterByEntity"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
     
+    <!-- Gráficos y actividad -->
     <div class="row">
       <div class="col-md-8 mb-4">
         <div class="card">
-          <div class="card-header bg-primary text-white">
-            <h5 class="card-title mb-0">Actividad Reciente</h5>
+          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">Compras Recientes</h5>
+            <small class="badge bg-light text-primary">
+              {{ selectedEntityId === 'all' ? 'Todas las entidades' : 'Entidad filtrada' }}
+            </small>
           </div>
           <div class="card-body">
             <div v-if="loading" class="text-center py-4">
@@ -82,8 +156,13 @@
               </div>
             </div>
             
-            <div v-else-if="recentTransactions.length === 0" class="text-center py-4">
-              <p class="text-muted">No hay transacciones recientes.</p>
+            <div v-else-if="recentPurchases.length === 0" class="text-center py-4">
+              <i class="bi bi-inbox display-1 text-muted"></i>
+              <p class="text-muted mt-3">No hay compras recientes.</p>
+              <button @click="refreshData" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-clockwise me-1"></i>
+                Actualizar
+              </button>
             </div>
             
             <div v-else class="table-responsive">
@@ -92,24 +171,37 @@
                   <tr>
                     <th>Fecha</th>
                     <th>Cliente</th>
-                    <th>Tipo</th>
-                    <th>Descripción</th>
-                    <th>Puntos</th>
+                    <th v-if="showEntityColumn">Entidad</th>
+                    <th>Monto</th>
+                    <th>Comprobante</th>
+                    <th>Estado</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="transaction in recentTransactions" :key="transaction.id">
-                    <td>{{ formatDate(transaction.timestamp) }}</td>
-                    <td>{{ transaction.clientEmail || transaction.clientId }}</td>
+                  <tr v-for="purchase in recentPurchases" :key="purchase.id">
+                    <td>{{ formatDate(purchase.date) }}</td>
                     <td>
-                      <span :class="`badge ${transaction.type === 'purchase' ? 'bg-primary' : transaction.type === 'reward' ? 'bg-success' : 'bg-info'}`">
-                        {{ transaction.type === 'purchase' ? 'Compra' : transaction.type === 'reward' ? 'Premio' : 'Ajuste' }}
-                      </span>
+                      <div>
+                        <strong>{{ purchase.customerName || 'Cliente' }}</strong>
+                        <br>
+                        <small class="text-muted">{{ formatPhone(purchase.phoneNumber) }}</small>
+                      </div>
                     </td>
-                    <td>{{ transaction.description }}</td>
+                    <td v-if="showEntityColumn">
+                      <EntityBadge 
+                        :entity="getEntityById(purchase.entityId)" 
+                        size="small"
+                      />
+                    </td>
                     <td>
-                      <span :class="transaction.points >= 0 ? 'text-success' : 'text-danger'">
-                        {{ transaction.points >= 0 ? '+' : '' }}{{ transaction.points }}
+                      <strong>{{ formatCurrency(purchase.amount) }}</strong>
+                    </td>
+                    <td>
+                      <small class="font-monospace">{{ purchase.invoiceNumber || 'N/A' }}</small>
+                    </td>
+                    <td>
+                      <span :class="`badge ${purchase.verified ? 'bg-success' : 'bg-warning'}`">
+                        {{ purchase.verified ? 'Verificado' : 'Pendiente' }}
                       </span>
                     </td>
                   </tr>
@@ -118,8 +210,12 @@
             </div>
             
             <div class="mt-3 text-end">
-              <router-link to="/admin/business/transactions" class="btn btn-primary">
-                Ver todas las transacciones
+              <router-link 
+                :to="{ name: 'business-purchases', query: selectedEntityId !== 'all' ? { entity: selectedEntityId } : {} }" 
+                class="btn btn-primary"
+              >
+                <i class="bi bi-list-ul me-1"></i>
+                Ver todas las compras
               </router-link>
             </div>
           </div>
@@ -127,9 +223,13 @@
       </div>
       
       <div class="col-md-4 mb-4">
-        <div class="card">
+        <!-- Top Clientes -->
+        <div class="card mb-4">
           <div class="card-header bg-success text-white">
-            <h5 class="card-title mb-0">Premios Populares</h5>
+            <h5 class="card-title mb-0">
+              <i class="bi bi-star me-2"></i>
+              Top Clientes
+            </h5>
           </div>
           <div class="card-body">
             <div v-if="loading" class="text-center py-4">
@@ -138,110 +238,195 @@
               </div>
             </div>
             
-            <div v-else-if="popularRewards.length === 0" class="text-center py-4">
-              <p class="text-muted">No hay datos de premios disponibles.</p>
+            <div v-else-if="metrics.topCustomers?.length === 0" class="text-center py-4">
+              <p class="text-muted">No hay datos de clientes disponibles.</p>
             </div>
             
             <div v-else>
-              <ul class="list-group">
-                <li v-for="reward in popularRewards" :key="reward.id" class="list-group-item d-flex justify-content-between align-items-center">
-                  {{ reward.name }}
-                  <span class="badge bg-primary rounded-pill">{{ reward.redeemCount }} canjes</span>
-                </li>
-              </ul>
+              <div v-for="(customer, index) in metrics.topCustomers?.slice(0, 5)" :key="customer.phoneNumber" class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center">
+                  <div class="rank-badge me-3">
+                    <span class="badge bg-primary">{{ index + 1 }}</span>
+                  </div>
+                  <div>
+                    <div class="fw-semibold">{{ customer.customerName }}</div>
+                    <small class="text-muted">{{ formatPhone(customer.phoneNumber) }}</small>
+                  </div>
+                </div>
+                <div class="text-end">
+                  <div class="fw-bold text-success">{{ formatCurrency(customer.totalSpent) }}</div>
+                  <small class="text-muted">{{ customer.purchaseCount }} compras</small>
+                </div>
+              </div>
               
               <div class="mt-3 text-end">
-                <router-link to="/admin/business/rewards" class="btn btn-success">
-                  Gestionar premios
+                <router-link to="/admin/business/customers" class="btn btn-success btn-sm">
+                  <i class="bi bi-people me-1"></i>
+                  Ver todos los clientes
                 </router-link>
               </div>
             </div>
           </div>
         </div>
         
-        <div class="card mt-4">
+        <!-- Acciones Rápidas -->
+        <div class="card">
           <div class="card-header bg-info text-white">
-            <h5 class="card-title mb-0">Acciones Rápidas</h5>
+            <h5 class="card-title mb-0">
+              <i class="bi bi-lightning me-2"></i>
+              Acciones Rápidas
+            </h5>
           </div>
           <div class="card-body">
             <div class="d-grid gap-2">
-              <button class="btn btn-primary" @click="showRegisterClientModal">
-                <i class="bi bi-person-plus"></i> Registrar Nuevo Cliente
-              </button>
-              <button class="btn btn-success" @click="showAddTransactionModal">
-                <i class="bi bi-cash"></i> Registrar Compra
+              <button class="btn btn-primary" @click="showRegisterPurchaseModal">
+                <i class="bi bi-receipt me-2"></i> 
+                Registrar Compra Manual
               </button>
               
+              <router-link 
+                to="/admin/business/settings" 
+                class="btn btn-outline-secondary"
+              >
+                <i class="bi bi-gear me-2"></i>
+                Configurar Negocio
+              </router-link>
+              
+              <button 
+                v-if="business?.businessEntities?.length <= 1"
+                class="btn btn-outline-info" 
+                @click="showAddEntityModal"
+              >
+                <i class="bi bi-building-add me-2"></i>
+                Agregar Entidad
+              </button>
+              
+              <button class="btn btn-outline-warning" @click="exportData">
+                <i class="bi bi-download me-2"></i>
+                Exportar Datos
+              </button>
+            </div>
+            
+            <!-- Mini estadísticas -->
+            <div class="mt-4 pt-3 border-top">
+              <h6 class="text-muted">Última actualización</h6>
+              <small class="text-muted">
+                {{ lastUpdated ? formatDate(lastUpdated) : 'Nunca' }}
+              </small>
             </div>
           </div>
         </div>
       </div>
     </div>
     
-    <!-- Modal para registrar cliente -->
-    <div class="modal fade" id="registerClientModal" tabindex="-1" aria-labelledby="registerClientModalLabel" aria-hidden="true">
-      <div class="modal-dialog">
+    <!-- Modal para registrar compra manual -->
+    <div class="modal fade" id="registerPurchaseModal" tabindex="-1" aria-labelledby="registerPurchaseModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header bg-primary text-white">
-            <h5 class="modal-title" id="registerClientModalLabel">Registrar Nuevo Cliente</h5>
+            <h5 class="modal-title" id="registerPurchaseModalLabel">
+              <i class="bi bi-receipt me-2"></i>
+              Registrar Compra Manual
+            </h5>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <form @submit.prevent="registerClient">
-              <div class="mb-3">
-                <label for="clientEmail" class="form-label">Email del Cliente</label>
-                <input type="email" class="form-control" id="clientEmail" v-model="newClient.email" required>
+            <form @submit.prevent="registerManualPurchase">
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="customerPhone" class="form-label">Teléfono del Cliente</label>
+                  <input 
+                    type="tel" 
+                    class="form-control" 
+                    id="customerPhone" 
+                    v-model="newPurchase.phoneNumber" 
+                    placeholder="+51987654321"
+                    required
+                  >
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="customerName" class="form-label">Nombre del Cliente</label>
+                  <input 
+                    type="text" 
+                    class="form-control" 
+                    id="customerName" 
+                    v-model="newPurchase.customerName"
+                    placeholder="Nombre opcional"
+                  >
+                </div>
               </div>
-              <div class="mb-3">
-                <label for="clientPhone" class="form-label">Teléfono del Cliente</label>
-                <input type="tel" class="form-control" id="clientPhone" v-model="newClient.phone" required>
+              
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="purchaseAmount" class="form-label">Monto de la Compra</label>
+                  <div class="input-group">
+                    <span class="input-group-text">S/</span>
+                    <input 
+                      type="number" 
+                      class="form-control" 
+                      id="purchaseAmount" 
+                      v-model.number="newPurchase.amount" 
+                      min="0" 
+                      step="0.01" 
+                      required
+                    >
+                  </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="entitySelect" class="form-label">Entidad Comercial</label>
+                  <select class="form-select" id="entitySelect" v-model="newPurchase.entityId" required>
+                    <option value="" disabled>Seleccionar entidad</option>
+                    <option 
+                      v-for="entity in business?.businessEntities || []" 
+                      :key="entity.id"
+                      :value="entity.id"
+                    >
+                      {{ entity.businessName }} ({{ entity.ruc }})
+                    </option>
+                  </select>
+                </div>
               </div>
-              <div class="mb-3">
-                <label for="clientName" class="form-label">Nombre del Cliente</label>
-                <input type="text" class="form-control" id="clientName" v-model="newClient.name">
+              
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="invoiceNumber" class="form-label">Número de Comprobante</label>
+                  <input 
+                    type="text" 
+                    class="form-control" 
+                    id="invoiceNumber" 
+                    v-model="newPurchase.invoiceNumber"
+                    placeholder="F001-123456 o B001-123456"
+                    required
+                  >
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="purchaseDate" class="form-label">Fecha de Compra</label>
+                  <input 
+                    type="date" 
+                    class="form-control" 
+                    id="purchaseDate" 
+                    v-model="newPurchase.date"
+                    :max="today"
+                    required
+                  >
+                </div>
               </div>
+              
+              <div class="mb-3">
+                <label for="purchaseDescription" class="form-label">Descripción (opcional)</label>
+                <textarea 
+                  class="form-control" 
+                  id="purchaseDescription" 
+                  v-model="newPurchase.description"
+                  rows="2"
+                  placeholder="Descripción opcional de la compra..."
+                ></textarea>
+              </div>
+              
               <div class="d-grid">
-                <button type="submit" class="btn btn-primary" :disabled="registeringClient">
-                  <span v-if="registeringClient" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                  Registrar Cliente
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Modal para añadir transacción -->
-    <div class="modal fade" id="addTransactionModal" tabindex="-1" aria-labelledby="addTransactionModalLabel" aria-hidden="true">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header bg-success text-white">
-            <h5 class="modal-title" id="addTransactionModalLabel">Registrar Compra</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <form @submit.prevent="addTransaction">
-              <div class="mb-3">
-                <label for="clientSelect" class="form-label">Cliente</label>
-                <select class="form-select" id="clientSelect" v-model="newTransaction.clientId" required>
-                  <option value="" disabled selected>Seleccionar cliente</option>
-                  <option v-for="client in clients" :key="client.id" :value="client.id">
-                    {{ client.email || client.phone || client.id }}
-                  </option>
-                </select>
-              </div>
-              <div class="mb-3">
-                <label for="transactionAmount" class="form-label">Monto de la Compra ($)</label>
-                <input type="number" class="form-control" id="transactionAmount" v-model.number="newTransaction.amount" min="0" step="0.01" required>
-              </div>
-              <div class="mb-3">
-                <label for="transactionDescription" class="form-label">Descripción (opcional)</label>
-                <input type="text" class="form-control" id="transactionDescription" v-model="newTransaction.description">
-              </div>
-              <div class="d-grid">
-                <button type="submit" class="btn btn-success" :disabled="addingTransaction">
-                  <span v-if="addingTransaction" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                <button type="submit" class="btn btn-primary" :disabled="registeringPurchase">
+                  <span v-if="registeringPurchase" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                  <i v-else class="bi bi-check-circle me-2"></i>
                   Registrar Compra
                 </button>
               </div>
@@ -254,390 +439,312 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
-import { useAuthStore } from '@/stores/auth';
-import { 
-  collection, query, where, orderBy, limit, getDocs, getDoc, doc,
-  addDoc, updateDoc, serverTimestamp, Timestamp, increment
-} from 'firebase/firestore';
-import { db } from '@/firebase';
+import { ref, onMounted, computed, watch } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+import { useBusinessMetrics } from '@/composables/useBusinessMetrics'
+import { businessService } from '@/services/businessService'
+import EntitySelector from '@/components/business/EntitySelector.vue'
+import EntityBadge from '@/components/business/EntityBadge.vue'
+import EntityStatsCard from '@/components/business/EntityStatsCard.vue'
 
-const authStore = useAuthStore();
-const loading = ref(true);
-const stats = ref({
-  totalClients: 0,
-  newClientsThisMonth: 0,
-  totalTransactions: 0,
-  transactionsThisMonth: 0,
-  totalRewards: 0,
-  rewardsThisMonth: 0
-});
-const recentTransactions = ref([]);
-const popularRewards = ref([]);
-const clients = ref([]);
+const authStore = useAuthStore()
 
-// Para el modal de registro de cliente
-const newClient = ref({
-  email: '',
-  phone: '',
-  name: ''
-});
-const registeringClient = ref(false);
-let registerClientModalInstance = null;
+// Estados principales
+const loading = ref(true)
+const selectedEntityId = ref('all')
+const recentPurchases = ref([])
+const business = ref(null)
 
-// Para el modal de transacción
-const newTransaction = ref({
-  clientId: '',
+// Modal states
+const registeringPurchase = ref(false)
+const newPurchase = ref({
+  phoneNumber: '',
+  customerName: '',
   amount: 0,
+  entityId: '',
+  invoiceNumber: '',
+  date: '',
   description: ''
-});
-const addingTransaction = ref(false);
-let addTransactionModalInstance = null;
+})
 
-const businessId = computed(() => authStore.businessId);
+// Usar el composable de métricas
+const { metrics, loading: metricsLoading, lastUpdated, fetchMetrics, refresh } = useBusinessMetrics(
+  computed(() => authStore.businessId),
+  selectedEntityId
+)
 
-onMounted(async () => {
-  if (authStore.isAuthenticated && (authStore.isBusinessAdmin || authStore.isSuperAdmin)) {
-    // Inicializar modales de Bootstrap
-    registerClientModalInstance = new bootstrap.Modal(document.getElementById('registerClientModal'));
-    addTransactionModalInstance = new bootstrap.Modal(document.getElementById('addTransactionModal'));
+// Computados
+const selectedEntity = computed(() => {
+  if (!business.value?.businessEntities || selectedEntityId.value === 'all') return null
+  return business.value.businessEntities.find(entity => entity.id === selectedEntityId.value)
+})
+
+const entitySubtitle = computed(() => {
+  return selectedEntityId.value === 'all' ? 'Todas las entidades' : 'Entidad filtrada'
+})
+
+const showEntityBreakdown = computed(() => {
+  return business.value?.businessEntities?.length > 1 && selectedEntityId.value === 'all'
+})
+
+const showEntityColumn = computed(() => {
+  return business.value?.businessEntities?.length > 1 && selectedEntityId.value === 'all'
+})
+
+const growthClass = computed(() => {
+  const growth = metrics.value.monthlyGrowth || 0
+  return growth >= 0 ? 'text-success' : 'text-danger'
+})
+
+const growthIcon = computed(() => {
+  const growth = metrics.value.monthlyGrowth || 0
+  return growth >= 0 ? 'bi-arrow-up' : 'bi-arrow-down'
+})
+
+const today = computed(() => {
+  return new Date().toISOString().split('T')[0]
+})
+
+// Métodos principales
+const loadBusinessData = async () => {
+  try {
+    if (!authStore.businessId) return
     
-    // Cargar datos
+    business.value = await businessService.getBusinessById(authStore.businessId)
+    
+    // Si no hay entidades, crear una por defecto
+    if (!business.value.businessEntities || business.value.businessEntities.length === 0) {
+      business.value.businessEntities = [{
+        id: 'default',
+        businessName: business.value.businessName || business.value.name,
+        ruc: business.value.ruc,
+        address: business.value.address || '',
+        locations: []
+      }]
+    }
+  } catch (error) {
+    console.error('Error loading business data:', error)
+  }
+}
+
+const loadRecentPurchases = async () => {
+  try {
+    if (!authStore.businessId) return
+    
+    const filters = { limit: 10 }
+    if (selectedEntityId.value && selectedEntityId.value !== 'all') {
+      filters.entityId = selectedEntityId.value
+    }
+    
+    recentPurchases.value = await businessService.getPurchases(authStore.businessId, filters)
+  } catch (error) {
+    console.error('Error loading recent purchases:', error)
+  }
+}
+
+const handleEntityChange = async (data) => {
+  selectedEntityId.value = data.entityId
+  await loadRecentPurchases()
+}
+
+const filterByEntity = (entity) => {
+  selectedEntityId.value = entity.id
+}
+
+const getEntityStats = (entityId) => {
+  const entityBreakdown = metrics.value.entityBreakdown || []
+  const entityMetrics = entityBreakdown.find(item => item.entityId === entityId)
+  return entityMetrics?.metrics || {
+    purchases: 0,
+    revenue: 0,
+    customers: 0,
+    averageTicket: 0
+  }
+}
+
+const getEntityById = (entityId) => {
+  if (!business.value?.businessEntities) return null
+  return business.value.businessEntities.find(entity => entity.id === entityId)
+}
+
+const refreshData = async () => {
+  loading.value = true
+  try {
     await Promise.all([
-      loadStats(),
-      loadRecentTransactions(),
-      loadPopularRewards(),
-      loadClients()
-    ]);
-    
-    loading.value = false;
-  }
-});
-
-async function loadStats() {
-  try {
-    // Obtener el primer día del mes actual
-    const now = new Date();
-    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const firstDayOfMonthTimestamp = Timestamp.fromDate(firstDayOfMonth);
-    
-    // Contar clientes
-    const clientsQuery = query(
-      collection(db, "client_businesses"),
-      where("businessId", "==", businessId.value)
-    );
-    const clientsSnapshot = await getDocs(clientsQuery);
-    stats.value.totalClients = clientsSnapshot.size;
-    
-    // Contar nuevos clientes este mes
-    const newClientsQuery = query(
-      collection(db, "client_businesses"),
-      where("businessId", "==", businessId.value),
-      where("createdAt", ">=", firstDayOfMonthTimestamp)
-    );
-    const newClientsSnapshot = await getDocs(newClientsQuery);
-    stats.value.newClientsThisMonth = newClientsSnapshot.size;
-    
-    // Contar transacciones
-    const transactionsQuery = query(
-      collection(db, "transactions"),
-      where("businessId", "==", businessId.value)
-    );
-    const transactionsSnapshot = await getDocs(transactionsQuery);
-    stats.value.totalTransactions = transactionsSnapshot.size;
-    
-    // Contar transacciones este mes
-    const transactionsThisMonthQuery = query(
-      collection(db, "transactions"),
-      where("businessId", "==", businessId.value),
-      where("timestamp", ">=", firstDayOfMonthTimestamp)
-    );
-    const transactionsThisMonthSnapshot = await getDocs(transactionsThisMonthQuery);
-    stats.value.transactionsThisMonth = transactionsThisMonthSnapshot.size;
-    
-    // Contar premios canjeados
-    const rewardsQuery = query(
-      collection(db, "client_rewards"),
-      where("businessId", "==", businessId.value),
-      where("redeemed", "==", true)
-    );
-    const rewardsSnapshot = await getDocs(rewardsQuery);
-    stats.value.totalRewards = rewardsSnapshot.size;
-    
-    // Contar premios canjeados este mes
-    const rewardsThisMonthQuery = query(
-      collection(db, "client_rewards"),
-      where("businessId", "==", businessId.value),
-      where("redeemed", "==", true),
-      where("redeemedAt", ">=", firstDayOfMonthTimestamp)
-    );
-    const rewardsThisMonthSnapshot = await getDocs(rewardsThisMonthQuery);
-    stats.value.rewardsThisMonth = rewardsThisMonthSnapshot.size;
-  } catch (error) {
-    console.error("Error al cargar estadísticas:", error);
+      loadBusinessData(),
+      loadRecentPurchases(),
+      refresh()
+    ])
+  } finally {
+    loading.value = false
   }
 }
 
-async function loadRecentTransactions() {
-  try {
-    const transactionsQuery = query(
-      collection(db, "transactions"),
-      where("businessId", "==", businessId.value),
-      orderBy("timestamp", "desc"),
-      limit(10)
-    );
-    
-    const snapshot = await getDocs(transactionsQuery);
-    
-    // Obtener datos de clientes para mostrar emails en lugar de IDs
-    const transactionsWithClientInfo = await Promise.all(snapshot.docs.map(async (docSnap) => {
-      const transaction = {
-        id: docSnap.id,
-        ...docSnap.data()
-      };
-      
-      try {
-        // Intentar obtener el email del cliente
-        const userDoc = await getDoc(doc(db, "users", transaction.clientId));
-        if (userDoc.exists()) {
-          transaction.clientEmail = userDoc.data().email;
-        }
-      } catch (error) {
-        console.error("Error al obtener datos del cliente:", error);
-      }
-      
-      return transaction;
-    }));
-    
-    recentTransactions.value = transactionsWithClientInfo;
-  } catch (error) {
-    console.error("Error al cargar transacciones recientes:", error);
-  }
-}
-
-async function loadPopularRewards() {
-  try {
-    // Obtener todos los premios del negocio
-    const rewardsQuery = query(
-      collection(db, "rewards"),
-      where("businessId", "==", businessId.value)
-    );
-    
-    const rewardsSnapshot = await getDocs(rewardsQuery);
-    const rewardsData = rewardsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      redeemCount: 0 // Inicializar contador de canjes
-    }));
-    
-    // Contar canjes para cada premio
-    const clientRewardsQuery = query(
-      collection(db, "client_rewards"),
-      where("businessId", "==", businessId.value),
-      where("redeemed", "==", true)
-    );
-    
-    const clientRewardsSnapshot = await getDocs(clientRewardsQuery);
-    
-    // Contar canjes por premio
-    clientRewardsSnapshot.forEach(doc => {
-      const data = doc.data();
-      const reward = rewardsData.find(r => r.id === data.rewardId);
-      if (reward) {
-        reward.redeemCount++;
-      }
-    });
-    
-    // Ordenar por número de canjes y tomar los 5 más populares
-    popularRewards.value = rewardsData
-      .sort((a, b) => b.redeemCount - a.redeemCount)
-      .slice(0, 5);
-  } catch (error) {
-    console.error("Error al cargar premios populares:", error);
-  }
-}
-
-async function loadClients() {
-  try {
-    const clientsQuery = query(
-      collection(db, "client_businesses"),
-      where("businessId", "==", businessId.value)
-    );
-    
-    const clientsSnapshot = await getDocs(clientsQuery);
-    
-    // Obtener información adicional de cada cliente
-    const clientsData = await Promise.all(clientsSnapshot.docs.map(async (docSnap) => {
-      const data = docSnap.data();
-      
-      try {
-        const userDoc = await getDoc(doc(db, "users", data.clientId));
-        if (userDoc.exists()) {
-          return {
-            id: data.clientId,
-            email: userDoc.data().email,
-            phone: userDoc.data().phone,
-            name: userDoc.data().displayName,
-            points: data.points || 0,
-            ...data
-          };
-        }
-      } catch (error) {
-        console.error("Error al obtener datos del cliente:", error);
-      }
-      
-      return {
-        id: data.clientId,
-        points: data.points || 0,
-        ...data
-      };
-    }));
-    
-    clients.value = clientsData;
-  } catch (error) {
-    console.error("Error al cargar clientes:", error);
-  }
-}
-
-function showRegisterClientModal() {
-  newClient.value = {
-    email: '',
-    phone: '',
-    name: ''
-  };
-  registerClientModalInstance.show();
-}
-
-function showAddTransactionModal() {
-  newTransaction.value = {
-    clientId: '',
+const showRegisterPurchaseModal = () => {
+  // Reset form
+  newPurchase.value = {
+    phoneNumber: '',
+    customerName: '',
     amount: 0,
+    entityId: business.value?.businessEntities?.[0]?.id || '',
+    invoiceNumber: '',
+    date: today.value,
     description: ''
-  };
-  addTransactionModalInstance.show();
-}
-
-async function registerClient() {
-  if (!newClient.value.email && !newClient.value.phone) {
-    alert("Debes proporcionar al menos un email o teléfono para el cliente.");
-    return;
   }
   
-  registeringClient.value = true;
+  const modal = new bootstrap.Modal(document.getElementById('registerPurchaseModal'))
+  modal.show()
+}
+
+const registerManualPurchase = async () => {
+  registeringPurchase.value = true
   
   try {
-    // Aquí iría la lógica para crear un nuevo usuario en Firebase Auth
-    // y luego asociarlo con el negocio
+    const selectedEntityData = getEntityById(newPurchase.value.entityId)
     
-    // Por ahora, simularemos que ya existe el usuario y solo lo asociaremos al negocio
-    const clientId = "user_" + Date.now(); // Simulado, en realidad sería el UID del usuario
+    const purchaseData = {
+      ...newPurchase.value,
+      businessSlug: authStore.businessId,
+      ruc: selectedEntityData?.ruc,
+      businessName: selectedEntityData?.businessName,
+      address: selectedEntityData?.address,
+      verified: true,
+      manualEntry: true,
+      enteredBy: authStore.user.uid
+    }
     
-    // Crear relación cliente-negocio
-    await addDoc(collection(db, "client_businesses"), {
-      clientId: clientId,
-      businessId: businessId.value,
-      points: 0,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
+    await businessService.registerPurchase(purchaseData)
     
-    // Recargar clientes
-    await loadClients();
-    await loadStats();
+    // Refresh data
+    await refreshData()
     
-    alert("Cliente registrado exitosamente.");
-    registerClientModalInstance.hide();
+    // Close modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('registerPurchaseModal'))
+    modal.hide()
+    
+    // Show success message
+    alert('Compra registrada exitosamente')
+    
   } catch (error) {
-    console.error("Error al registrar cliente:", error);
-    alert("Error al registrar cliente: " + error.message);
+    console.error('Error registering purchase:', error)
+    alert('Error al registrar la compra: ' + error.message)
   } finally {
-    registeringClient.value = false;
+    registeringPurchase.value = false
   }
 }
 
-async function addTransaction() {
-  if (!newTransaction.value.clientId || newTransaction.value.amount <= 0) {
-    alert("Por favor, selecciona un cliente y especifica un monto válido.");
-    return;
-  }
-  
-  addingTransaction.value = true;
-  
-  try {
-    const businessDoc = await getDoc(doc(db, "businesses", businessId.value));
-    if (!businessDoc.exists()) {
-      throw new Error("No se encontró información del negocio.");
-    }
-    
-    const businessData = businessDoc.data();
-    const pointsPerCurrency = businessData.pointsPerCurrency || 1; // Puntos por cada unidad de moneda
-    const pointsEarned = Math.floor(newTransaction.value.amount * pointsPerCurrency);
-    
-    // Buscar la relación cliente-negocio
-    const clientBusinessQuery = query(
-      collection(db, "client_businesses"),
-      where("clientId", "==", newTransaction.value.clientId),
-      where("businessId", "==", businessId.value)
-    );
-    
-    const clientBusinessSnapshot = await getDocs(clientBusinessQuery);
-    
-    if (clientBusinessSnapshot.empty) {
-      throw new Error("El cliente no está registrado en este negocio.");
-    }
-    
-    const clientBusinessDoc = clientBusinessSnapshot.docs[0];
-    
-    // Crear transacción
-    await addDoc(collection(db, "transactions"), {
-      clientId: newTransaction.value.clientId,
-      businessId: businessId.value,
-      businessName: businessData.name,
-      type: "purchase",
-      description: newTransaction.value.description || `Compra por $${newTransaction.value.amount}`,
-      amount: newTransaction.value.amount,
-      points: pointsEarned,
-      timestamp: serverTimestamp()
-    });
-    
-    // Actualizar puntos del cliente
-    await updateDoc(doc(db, "client_businesses", clientBusinessDoc.id), {
-      points: increment(pointsEarned),
-      updatedAt: serverTimestamp()
-    });
-    
-    // Recargar datos
-    await Promise.all([
-      loadRecentTransactions(),
-      loadStats()
-    ]);
-    
-    alert(`Transacción registrada exitosamente. El cliente ha ganado ${pointsEarned} puntos.`);
-    addTransactionModalInstance.hide();
-  } catch (error) {
-    console.error("Error al registrar transacción:", error);
-    alert("Error al registrar transacción: " + error.message);
-  } finally {
-    addingTransaction.value = false;
-  }
+const showAddEntityModal = () => {
+  // TODO: Implementar modal para agregar nueva entidad
+  alert('Funcionalidad de agregar entidad en desarrollo')
 }
 
-function formatDate(timestamp) {
-  if (!timestamp) return '';
+const exportData = () => {
+  // TODO: Implementar exportación de datos
+  alert('Funcionalidad de exportación en desarrollo')
+}
+
+// Utilidades de formateo
+const formatNumber = (value) => {
+  return new Intl.NumberFormat('es-PE').format(value || 0)
+}
+
+const formatCurrency = (value) => {
+  return new Intl.NumberFormat('es-PE', {
+    style: 'currency',
+    currency: 'PEN',
+    minimumFractionDigits: 2
+  }).format(value || 0)
+}
+
+const formatGrowth = (value) => {
+  return Math.abs(value || 0).toFixed(1)
+}
+
+const formatDate = (date) => {
+  if (!date) return 'N/A'
   
-  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-  return date.toLocaleDateString('es-ES', {
-    day: '2-digit',
-    month: '2-digit',
+  const dateObj = date.toDate ? date.toDate() : new Date(date)
+  return new Intl.DateTimeFormat('es-PE', {
     year: 'numeric',
+    month: 'short',
+    day: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
-  });
+  }).format(dateObj)
 }
+
+const formatPhone = (phone) => {
+  if (!phone) return 'N/A'
+  return phone.replace(/(\+51)(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4')
+}
+
+// Watchers
+watch(selectedEntityId, () => {
+  loadRecentPurchases()
+})
+
+// Lifecycle
+onMounted(async () => {
+  if (authStore.isAuthenticated && (authStore.isBusinessAdmin || authStore.isSuperAdmin)) {
+    await refreshData()
+  }
+  loading.value = false
+})
 </script>
 
 <style scoped>
 .business-admin-dashboard {
   padding-bottom: 2rem;
+}
+
+.dashboard-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 2rem;
+  border-radius: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+.entity-selector-wrapper {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1rem;
+  border-radius: 0.5rem;
+  backdrop-filter: blur(10px);
+}
+
+.selected-entity-info {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.rank-badge {
+  width: 40px;
+  text-align: center;
+}
+
+.card {
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  border: none;
+}
+
+.card:hover {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  transition: box-shadow 0.15s ease-in-out;
+}
+
+@media (max-width: 768px) {
+  .dashboard-header {
+    padding: 1rem;
+  }
+  
+  .dashboard-header .d-flex {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .entity-selector-wrapper {
+    width: 100%;
+  }
 }
 </style>

@@ -40,6 +40,13 @@
             <div class="mt-20 px-6 text-center">
                 <h1 class="text-3xl font-bold text-gray-900">{{ business.name }}</h1>
                 <p class="text-gray-600 mt-2">{{ business.description }}</p>
+                
+                <!-- Indicador de múltiples entidades -->
+                <div v-if="hasMultipleEntities" class="mt-2 px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full inline-block">
+                    <i class="bi bi-building me-1"></i>
+                    {{ business.businessEntities.length }} ubicaciones
+                </div>
+                
                 <h2 class="text-lg text-gray-600 mt-4">
                     Tarjeta de Cliente Frecuente
                 </h2>
@@ -65,6 +72,21 @@
                     <p class="text-lg font-semibold text-gray-700">
                         {{ purchaseCount }} de {{ purchasesRequired }} compras
                     </p>
+                    
+                    <!-- Totales consolidados -->
+                    <div class="mt-4 p-3 bg-gray-100 rounded-lg">
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <p class="text-gray-600">Total gastado</p>
+                                <p class="font-semibold text-lg">{{ formatCurrency(totalSpent) }}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-600">Compras totales</p>
+                                <p class="font-semibold text-lg">{{ purchaseCount }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- Mostrar premio alcanzado si corresponde -->
                     <div v-if="currentReward"
                         class="mt-4 p-3 bg-green-100 text-green-800 rounded-md">
@@ -77,27 +99,83 @@
 
                     <!-- Business Details -->
                     <div class="mt-6 p-4 bg-gray-50 rounded-lg text-left">
-                        <p class="text-gray-600"><strong>Dirección:</strong> {{ business.address }}</p>
-                        <p class="text-gray-600 mt-1"><strong>Teléfono:</strong> {{ business.phone }}</p>
+                        <div v-if="!hasMultipleEntities">
+                            <!-- Información única para una sola entidad -->
+                            <p class="text-gray-600"><strong>Dirección:</strong> {{ business.address || primaryEntity?.address }}</p>
+                            <p class="text-gray-600 mt-1"><strong>RUC:</strong> {{ business.ruc || primaryEntity?.ruc }}</p>
+                            <p class="text-gray-600 mt-1" v-if="business.phone"><strong>Teléfono:</strong> {{ business.phone }}</p>
+                        </div>
+                        <div v-else>
+                            <!-- Información consolidada para múltiples entidades -->
+                            <h4 class="font-semibold text-gray-700 mb-2">Ubicaciones</h4>
+                            <div class="space-y-2">
+                                <div v-for="entity in business.businessEntities" :key="entity.id" 
+                                     class="text-sm border-l-2 border-blue-200 pl-2">
+                                    <p class="font-medium">{{ entity.businessName }}</p>
+                                    <p class="text-gray-600">{{ entity.address }}</p>
+                                    <p class="text-gray-500 text-xs">RUC: {{ entity.ruc }}</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Recent Purchases -->
+                    <!-- Recent Purchases with Entity Info -->
                     <div class="mt-6 p-4 bg-gray-50 rounded-lg text-left">
                         <h3 class="font-semibold text-gray-700 mb-2">Últimas compras</h3>
-                        <div v-if="recentPurchases.length > 0">
-                            <div v-for="purchase in recentPurchases" :key="purchase.timestamp"
-                                class="flex justify-between items-center py-2 border-b border-gray-200 last:border-0">
-                                <span class="text-gray-600">
-                                    {{ formatDate(purchase.timestamp) }}
-                                </span>
-                                <span class="font-medium">
-                                    S/ {{ purchase.amount.toFixed(2) }}
-                                </span>
+                        <div v-if="recentPurchases.length > 0" class="space-y-2">
+                            <div v-for="purchase in recentPurchases" :key="purchase.id || purchase.timestamp"
+                                class="py-2 border-b border-gray-200 last:border-0">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex-1">
+                                        <div class="flex justify-between items-center">
+                                            <span class="text-gray-600 text-sm">
+                                                {{ formatDate(purchase.timestamp || purchase.date) }}
+                                            </span>
+                                            <span class="font-medium">
+                                                {{ formatCurrency(purchase.amount) }}
+                                            </span>
+                                        </div>
+                                        
+                                        <!-- Información de entidad específica (si hay múltiples) -->
+                                        <div v-if="hasMultipleEntities && purchase.entityId" class="mt-1">
+                                            <div class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded inline-block">
+                                                {{ getEntityName(purchase.entityId) }}
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Información adicional -->
+                                        <div class="mt-1 flex items-center gap-2 text-xs text-gray-500">
+                                            <span v-if="purchase.invoiceNumber">
+                                                {{ purchase.invoiceNumber }}
+                                            </span>
+                                            <span v-if="purchase.verified" class="text-green-600">
+                                                <i class="bi bi-check-circle-fill"></i> Verificado
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <p v-else class="text-gray-500 text-sm">
                             Aún no hay compras registradas
                         </p>
+                    </div>
+                    
+                    <!-- Estadísticas por entidad (si hay múltiples) -->
+                    <div v-if="hasMultipleEntities && entityStats.length > 0" class="mt-6 p-4 bg-blue-50 rounded-lg text-left">
+                        <h3 class="font-semibold text-gray-700 mb-3">Estadísticas por ubicación</h3>
+                        <div class="space-y-3">
+                            <div v-for="stat in entityStats" :key="stat.entityId" 
+                                 class="flex justify-between items-center p-2 bg-white rounded">
+                                <div>
+                                    <p class="font-medium text-sm">{{ stat.entityName }}</p>
+                                    <p class="text-xs text-gray-600">{{ stat.compras }} compras</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="font-semibold text-sm">{{ formatCurrency(stat.totalGastado) }}</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -171,8 +249,24 @@ const selectedIcon = computed(() => {
     return iconMap[business.value?.icon || 'cafe'];
 });
 
+const hasMultipleEntities = computed(() => {
+    return business.value?.businessEntities?.length > 1;
+});
+
+const primaryEntity = computed(() => {
+    if (!business.value?.businessEntities?.length) return null;
+    
+    // Buscar la entidad primaria o tomar la primera
+    return business.value.businessEntities.find(e => e.id === business.value.primaryEntityId) || 
+           business.value.businessEntities[0];
+});
+
 const purchaseCount = computed(() => {
     return customerData.value?.businesses?.[businessSlug.value]?.purchaseCount || 0;
+});
+
+const totalSpent = computed(() => {
+    return customerData.value?.businesses?.[businessSlug.value]?.totalSpent || 0;
 });
 
 const purchasesRequired = computed(() => {
@@ -242,7 +336,52 @@ const recentPurchases = computed(() => {
     .slice(0, 5); // Mostrar solo las 5 compras más recientes
 });
 
+// Estadísticas por entidad
+const entityStats = computed(() => {
+    if (!hasMultipleEntities.value || !customerData.value?.businesses?.[businessSlug.value]?.purchases) {
+        return [];
+    }
+    
+    const purchases = customerData.value.businesses[businessSlug.value].purchases;
+    const statsByEntity = {};
+    
+    // Agrupar compras por entidad
+    purchases.forEach(purchase => {
+        const entityId = purchase.entityId || 'unknown';
+        if (!statsByEntity[entityId]) {
+            statsByEntity[entityId] = {
+                entityId,
+                compras: 0,
+                totalGastado: 0
+            };
+        }
+        statsByEntity[entityId].compras++;
+        statsByEntity[entityId].totalGastado += purchase.amount || 0;
+    });
+    
+    // Convertir a array y agregar nombres de entidades
+    return Object.values(statsByEntity).map(stat => ({
+        ...stat,
+        entityName: getEntityName(stat.entityId)
+    })).sort((a, b) => b.totalGastado - a.totalGastado);
+});
+
 // Helpers
+const getEntityName = (entityId) => {
+    if (!business.value?.businessEntities || !entityId) return 'Ubicación no especificada';
+    
+    const entity = business.value.businessEntities.find(e => e.id === entityId);
+    return entity ? entity.businessName : 'Ubicación no especificada';
+};
+
+const formatCurrency = (value) => {
+    return new Intl.NumberFormat('es-PE', {
+        style: 'currency',
+        currency: 'PEN',
+        minimumFractionDigits: 2
+    }).format(value || 0);
+};
+
 const formatDate = (date) => {
     if (!date) return '';
     
@@ -306,6 +445,19 @@ const loadBusinessData = async () => {
             id: businessDoc.id,
             ...businessDoc.data()
         };
+        
+        // Auto-migrar si es necesario (para compatibilidad)
+        if (!business.value.businessEntities && business.value.ruc) {
+            business.value.businessEntities = [{
+                id: 'entity1',
+                businessName: business.value.businessName || business.value.name,
+                ruc: business.value.ruc,
+                address: business.value.address || '',
+                locations: []
+            }];
+            business.value.primaryEntityId = 'entity1';
+        }
+        
         console.log('Datos del negocio cargados correctamente:', business.value);
     } catch (err) {
         console.error('Error al cargar datos del negocio:', err);

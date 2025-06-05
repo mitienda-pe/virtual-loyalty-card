@@ -131,6 +131,14 @@
               <span v-if="!collapsed">Premios Canjeados</span>
             </router-link>
           </li>
+
+          <!-- Programas de Lealtad -->
+          <li class="nav-item">
+            <router-link to="/admin/business/loyalty-programs" class="nav-link" :class="{ active: $route.path === '/admin/business/loyalty-programs' }" @click="handleMobileClick">
+              <Heart class="me-3" :size="20" />
+              <span v-if="!collapsed">Programas de Lealtad</span>
+            </router-link>
+          </li>
         </template>
 
         <!-- Common Menu Items -->
@@ -173,7 +181,8 @@ import {
   LogOut, 
   User, 
   UserCheck,
-  Gift
+  Gift,
+  Heart
 } from 'lucide-vue-next';
 
 const router = useRouter();

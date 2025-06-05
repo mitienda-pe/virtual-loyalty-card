@@ -336,19 +336,94 @@ async function processImageMessage(
         }
       );
 
+      console.log("✅ Compra registrada exitosamente:", result);
+
+      // Procesar programas de lealtad
+      let loyaltyResults = [];
+      try {
+        const { processTicketForLoyalty } = require('../services/loyaltyProcessor');
+        
+        const ticketData = {
+          id: result.id || `${finalExtraction.ruc}-${finalExtraction.invoiceNumber}`,
+          businessSlug: finalExtraction.businessSlug,
+          entityId: finalExtraction.entityId,
+          amount: finalExtraction.amount,
+          extractedText: finalExtraction.extractedText,
+          items: finalExtraction.items || [],
+          invoiceNumber: finalExtraction.invoiceNumber,
+          ruc: finalExtraction.ruc
+        };
+
+        const customerData = {
+          phoneNumber: user.phone,
+          name: user.name || 'Cliente'
+        };
+
+        const businessData = {
+          slug: finalExtraction.businessSlug,
+          name: finalExtraction.businessName || finalExtraction.businessSlug
+        };
+
+        loyaltyResults = await processTicketForLoyalty(ticketData, customerData, businessData);
+        console.log("🎁 Programas de lealtad procesados:", loyaltyResults);
+      } catch (loyaltyError) {
+        console.error("⚠️ Error procesando programas de lealtad:", loyaltyError);
+        // No fallar el flujo principal por errores de lealtad
+      }
+
       // ACTUALIZADO: Crear mensaje de confirmación con información específica de la entidad
       const normalizedPhone = normalizePhoneNumber(user.phone);
-      const confirmationMessage = `¡Gracias por tu compra en ${businessWithEntity?.name || finalExtraction.businessSlug}!
+      
+      // Generar mensaje de recompensas de lealtad
+      let loyaltyMessage = '';
+      if (loyaltyResults && loyaltyResults.length > 0) {
+        const eligiblePrograms = loyaltyResults.filter(r => r.eligible && !r.error);
+        const redeemablePrograms = eligiblePrograms.filter(r => r.canRedeem);
+        
+        if (redeemablePrograms.length > 0) {
+          loyaltyMessage = '\n\n🎉 ¡RECOMPENSA DISPONIBLE!';
+          redeemablePrograms.forEach(program => {
+            if (program.type === 'points') {
+              loyaltyMessage += `\n⭐ ${program.programName}: Ganaste ${program.pointsEarned} puntos`;
+              if (program.availableRewards && program.availableRewards.length > 0) {
+                loyaltyMessage += '\n🎁 Puedes canjear:';
+                program.availableRewards.forEach(reward => {
+                  loyaltyMessage += `\n   • ${reward.reward} (${reward.points} puntos)`;
+                });
+              }
+            } else {
+              loyaltyMessage += `\n🎁 ${program.programName}: ¡Compra completada! Puedes canjear tu recompensa`;
+            }
+          });
+        } else if (eligiblePrograms.length > 0) {
+          loyaltyMessage = '\n\n🎯 Progreso en programas de lealtad:';
+          eligiblePrograms.forEach(program => {
+            if (program.type === 'points') {
+              loyaltyMessage += `\n⭐ ${program.programName}: +${program.pointsEarned} puntos (Total: ${program.totalPoints})`;
+            } else {
+              loyaltyMessage += `\n📈 ${program.programName}: ${program.progress}/${program.target}`;
+            }
+          });
+        }
+      }
+      
+      const confirmationMessage = `¡Gracias por tu compra en ${
+        finalExtraction.businessName || finalExtraction.businessSlug
+      }!
 
 🧯 Comprobante registrado correctamente
 💰 Monto: S/ ${finalExtraction.amount}
 🏢 Razón Social: ${finalExtraction.entity.businessName}
-📍 Dirección: ${finalExtraction.entity.address || "No disponible"}
+📍 Dirección: ${
+        finalExtraction.entity.address || "No disponible"
+      }
 
 🛍️ Compra registrada exitosamente
-🛒 Total de compras: ${result.customer?.purchaseCount || 1}
+🛒 Total de compras: ${result.customer?.purchaseCount || 1}${loyaltyMessage}
 
-Ver tu tarjeta de fidelidad: https://asiduo.club/${finalExtraction.businessSlug}/${normalizedPhone}`;
+Ver tu tarjeta de fidelidad: https://asiduo.club/${
+        finalExtraction.businessSlug
+      }/${normalizedPhone}`;
 
       // Enviar mensaje de confirmación
       await sendWhatsAppMessage(
@@ -374,21 +449,21 @@ Ver tu tarjeta de fidelidad: https://asiduo.club/${finalExtraction.businessSlug}
         imageBuffer = await downloadWhatsAppMedia(imageId, apiToken);
       } catch (downloadError) {
         console.error("❌ Error descargando imagen para la cola:", downloadError.message);
-        throw downloadError; // Propagar el error si no podemos descargar la imagen
+        throw downloadError;
       }
       
       // Agregar a Cloud Tasks para procesamiento
       // Asegurar que el usuario tenga un número de teléfono normalizado
       const normalizedPhone = normalizePhoneNumber(user.phone);
       
-      // Crear una copia del usuario con el teléfono normalizado para evitar problemas en el procesamiento
+      // Crear una copia del usuario con el teléfono normalizado
       const userForTask = {
         ...user,
-        phone: normalizedPhone, // Asegurar que el teléfono esté normalizado
-        phoneNumber: normalizedPhone, // Agregar una propiedad alternativa por si acaso
+        phone: normalizedPhone,
+        phoneNumber: normalizedPhone,
         profile: {
           ...(user.profile || {}),
-          phoneNumber: normalizedPhone // Agregar al perfil también
+          phoneNumber: normalizedPhone
         }
       };
       
@@ -420,7 +495,6 @@ Ver tu tarjeta de fidelidad: https://asiduo.club/${finalExtraction.businessSlug}
         }
       } catch (cloudTasksError) {
         console.error("Error al crear tarea en Cloud Tasks:", cloudTasksError);
-        // No lanzamos el error para poder usar el mecanismo de respaldo
       }
       
       // Si Cloud Tasks falló o no está disponible, usar la cola tradicional de Firestore
@@ -429,27 +503,26 @@ Ver tu tarjeta de fidelidad: https://asiduo.club/${finalExtraction.businessSlug}
         try {
           const queueId = await queueService.addToQueue({
             ...taskData,
-            imageBuffer, // Usar el buffer original para la cola de respaldo
-            cloudTasksAttempted: true // Indicar que se intentó usar Cloud Tasks primero
+            imageBuffer,
+            cloudTasksAttempted: true
           });
           console.log(`✅ Imagen agregada a la cola de respaldo con ID: ${queueId}`);
         } catch (queueError) {
           console.error("Error al agregar a la cola de respaldo:", queueError);
-          throw queueError; // En este caso sí lanzamos el error porque es nuestro último recurso
+          throw queueError;
         }
       } else {
         // Si Cloud Tasks funcionó, también agregamos a la cola tradicional como respaldo
         try {
           const queueId = await queueService.addToQueue({
             ...taskData,
-            imageBuffer, // Usar el buffer original para la cola de respaldo
-            taskId, // Agregar referencia al taskId de Cloud Tasks
-            isBackup: true // Indicar que esta es una copia de respaldo
+            imageBuffer,
+            taskId,
+            isBackup: true
           });
           console.log(`✅ Imagen también agregada a la cola de respaldo con ID: ${queueId}`);
         } catch (queueError) {
           console.error("Error al agregar a la cola de respaldo:", queueError);
-          // No lanzamos el error para no interrumpir el flujo principal
         }
       }
       
@@ -470,7 +543,7 @@ Ver tu tarjeta de fidelidad: https://asiduo.club/${finalExtraction.businessSlug}
       "Lo sentimos, hubo un error al procesar tu comprobante. Por favor, intenta nuevamente con una imagen más clara.";
 
     try {
-      // Intentar agregar a la cola si es un error general (fuera del bloque try interno)
+      // Intentar agregar a la cola si es un error general
       if (message && message.image && message.image.id) {
         console.log("⚠️ Intentando agregar a la cola después de error general");
         

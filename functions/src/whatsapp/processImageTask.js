@@ -117,17 +117,24 @@ exports.processImageTask = onRequest(
       // Registrar la compra en la base de datos
       console.log("💾 Registrando compra en la base de datos...");
       
-      // Buscar el negocio usando el RUC
-      const business = await findBusinessByRUC(receiptData.ruc);
-      const businessSlug = business?.businessSlug || receiptData.businessSlug;
+      // ACTUALIZADO: Buscar el negocio y entidad específica usando el RUC
+      console.log("🔍 Buscando negocio y entidad específica por RUC...");
+      const businessWithEntity = await findBusinessByRUC(receiptData.ruc);
       
-      if (!businessSlug) {
+      if (!businessWithEntity) {
         console.error(`No se encontró un negocio registrado con el RUC: ${receiptData.ruc}`);
         throw new Error(`No se encontró un negocio registrado con el RUC: ${receiptData.ruc}`);
       }
       
-      console.log(`Intentando registrar compra con: businessSlug=${businessSlug}, phone=${user.phone}, amount=${receiptData.amount}`);
-      console.log(`Datos adicionales: RUC=${receiptData.ruc}, invoiceNumber=${receiptData.invoiceId}, businessName=${receiptData.businessName}`);
+      const businessSlug = businessWithEntity.slug;
+      const entityId = businessWithEntity.entityId;
+      const entity = businessWithEntity.entity;
+      
+      console.log(`✅ Negocio y entidad encontrados: ${businessSlug}/${entityId}`);
+      console.log(`📋 Entidad: ${entity.businessName} - ${entity.address}`);
+      
+      console.log(`Intentando registrar compra con: businessSlug=${businessSlug}, entityId=${entityId}, phone=${user.phone}, amount=${receiptData.amount}`);
+      console.log(`Datos de entidad: RUC=${entity.ruc}, businessName=${entity.businessName}, address=${entity.address}`);
       
       let purchaseResult;
       
@@ -136,16 +143,19 @@ exports.processImageTask = onRequest(
         const normalizedPhone = user.phone.startsWith('+') ? user.phone : `+${user.phone}`;
         console.log(`Número de teléfono normalizado para registro: ${normalizedPhone}`);
         
+        // ACTUALIZADO: Registrar compra con datos de entidad específica
         purchaseResult = await registerPurchase(
           businessSlug,
-          normalizedPhone, // Usar el número normalizado
+          normalizedPhone,
           receiptData.amount,
           null, // URL de imagen (se actualizará después)
           {
-            ruc: receiptData.ruc,
+            ruc: entity.ruc, // RUC de la entidad específica
             invoiceNumber: receiptData.invoiceId,
-            businessName: receiptData.businessName,
-            address: receiptData.address,
+            entityId: entityId, // NUEVO
+            entity: entity, // NUEVO
+            businessName: entity.businessName, // Razón social específica
+            address: entity.address, // Dirección específica
             customerName: user.name || (user.profile && user.profile.name) || user.displayName || user.fullName || user.given_name || user.phone || "—",
             verified: true,
             processedFromCloudTasks: true,
@@ -158,14 +168,48 @@ exports.processImageTask = onRequest(
         }
         
         console.log(`✅ Compra registrada exitosamente: ${JSON.stringify(purchaseResult)}`);
+        
+        // Procesar programas de lealtad
+        let loyaltyResults = [];
+        try {
+          const { processTicketForLoyalty } = require('../services/loyaltyProcessor');
+          
+          const ticketData = {
+            id: purchaseResult.id || `${entity.ruc}-${receiptData.invoiceNumber}`,
+            businessSlug: businessSlug,
+            entityId: business.entityId,
+            amount: receiptData.amount,
+            extractedText: receiptData.extractedText,
+            items: receiptData.items || [],
+            invoiceNumber: receiptData.invoiceNumber,
+            ruc: entity.ruc
+          };
+
+          const customerData = {
+            phoneNumber: userPhoneNormalized,
+            name: user.name || 'Cliente'
+          };
+
+          const businessData = {
+            slug: businessSlug,
+            name: businessWithEntity?.name || entity.businessName
+          };
+
+          loyaltyResults = await processTicketForLoyalty(ticketData, customerData, businessData);
+          console.log("🎁 Programas de lealtad procesados:", loyaltyResults);
+        } catch (loyaltyError) {
+          console.error("⚠️ Error procesando programas de lealtad:", loyaltyError);
+          // No fallar el flujo principal por errores de lealtad
+        }
+        
       } catch (registerError) {
         console.error(`❌ Error registrando compra: ${registerError.message}`);
         console.error(registerError.stack);
         
-        // Enviar mensaje de error al usuario
+        // Enviar mensaje de error al usuario con información específica
         await sendWhatsAppMessage(
           user.phone,
-          `Hubo un problema al registrar tu compra: ${registerError.message}. Por favor, intenta nuevamente.`,
+          `Hubo un problema al registrar tu compra en ${entity.businessName}: ${registerError.message}. Por favor, intenta nuevamente.`,
           phoneNumberId,
           apiToken
         );
@@ -187,27 +231,66 @@ exports.processImageTask = onRequest(
       
       console.log(`Cliente verificado: ${JSON.stringify(customerInfo)}`);
       
-      // Enviar mensaje de confirmación al usuario
+      // Generar mensaje de recompensas de lealtad
+      let loyaltyMessage = '';
+      if (loyaltyResults && loyaltyResults.length > 0) {
+        const eligiblePrograms = loyaltyResults.filter(r => r.eligible && !r.error);
+        const redeemablePrograms = eligiblePrograms.filter(r => r.canRedeem);
+        
+        if (redeemablePrograms.length > 0) {
+          loyaltyMessage = '\n🎉 ¡RECOMPENSA DISPONIBLE!';
+          redeemablePrograms.forEach(program => {
+            if (program.type === 'points') {
+              loyaltyMessage += `\n⭐ ${program.programName}: Ganaste ${program.pointsEarned} puntos`;
+              if (program.availableRewards && program.availableRewards.length > 0) {
+                loyaltyMessage += '\n🎁 Puedes canjear:';
+                program.availableRewards.forEach(reward => {
+                  loyaltyMessage += `\n   • ${reward.reward} (${reward.points} puntos)`;
+                });
+              }
+            } else {
+              loyaltyMessage += `\n🎁 ${program.programName}: ¡Compra completada! Puedes canjear tu recompensa`;
+            }
+          });
+        } else if (eligiblePrograms.length > 0) {
+          loyaltyMessage = '\n🎯 Progreso en programas de lealtad:';
+          eligiblePrograms.forEach(program => {
+            if (program.type === 'points') {
+              loyaltyMessage += `\n⭐ ${program.programName}: +${program.pointsEarned} puntos (Total: ${program.totalPoints})`;
+            } else {
+              loyaltyMessage += `\n📈 ${program.programName}: ${program.progress}/${program.target}`;
+            }
+          });
+        }
+      }
+      
+      // ACTUALIZADO: Enviar mensaje de confirmación con información específica de la entidad
       console.log("📱 Enviando confirmación por WhatsApp...");
-      let confirmationMessage = `¡Gracias por tu compra en ${business?.name || receiptData.businessName || 'el comercio'}!\n\n`;
+      let confirmationMessage = `¡Gracias por tu compra en ${businessWithEntity?.name || entity.businessName}!\n\n`;
       confirmationMessage += `🧯 Comprobante registrado correctamente\n`;
       confirmationMessage += `💰 Monto: S/ ${receiptData.amount}\n`;
-      if (receiptData.address) {
-        confirmationMessage += `📍 Dirección: ${receiptData.address}\n`;
+      confirmationMessage += `🏢 Razón Social: ${entity.businessName}\n`;
+      if (entity.address) {
+        confirmationMessage += `📍 Dirección: ${entity.address}\n`;
       }
       confirmationMessage += "\n";
       
       // Agregar información de compras
       confirmationMessage += `🛍️ Compra registrada exitosamente\n`;
-      confirmationMessage += `🛒 Total de compras: ${customerInfo.purchaseCount}\n\n`;
+      confirmationMessage += `🛒 Total de compras: ${customerInfo.purchaseCount}`;
       
-      // Agregar mensaje de premio escalonado si corresponde
+      // Agregar mensaje de lealtad si existe
+      if (loyaltyMessage) {
+        confirmationMessage += loyaltyMessage;
+      }
+      
+      // Agregar mensaje de premio escalonado si corresponde (legacy)
       if (purchaseResult.reward) {
-        confirmationMessage += `🎁 ¡Felicidades! Has alcanzado un premio: ${purchaseResult.reward}\n`;
+        confirmationMessage += `\n🎁 ¡Felicidades! Has alcanzado un premio: ${purchaseResult.reward}`;
       }
       
       // Agregar enlace a la tarjeta de fidelidad
-      confirmationMessage += `Ver tu tarjeta de fidelidad: https://asiduo.club/${businessSlug}/${userPhoneNormalized}`;
+      confirmationMessage += `\n\nVer tu tarjeta de fidelidad: https://asiduo.club/${businessSlug}/${userPhoneNormalized}`;
       
       await sendWhatsAppMessage(
         userPhoneNormalized,
@@ -218,14 +301,22 @@ exports.processImageTask = onRequest(
       
       // Actualizar estado de la tarea a "completado"
       if (taskId) {
-        await updateTaskStatus(taskId, 'COMPLETED', purchaseResult);
+        await updateTaskStatus(taskId, 'COMPLETED', {
+          ...purchaseResult,
+          entityId: entityId,
+          entity: entity
+        });
       }
       
       console.log("✅ Procesamiento de imagen completado con éxito");
       res.status(200).send({
         success: true,
         message: 'Imagen procesada correctamente',
-        result: purchaseResult
+        result: {
+          ...purchaseResult,
+          entityId: entityId,
+          entity: entity
+        }
       });
       
     } catch (error) {
